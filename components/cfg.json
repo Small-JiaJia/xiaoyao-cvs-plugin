@@ -1,0 +1,10 @@
+{
+	"sys": {
+		"help": false,
+		"Note": false,
+		"Atlas": true
+	},
+	"Atlas": {
+		"all": true
+	}
+}

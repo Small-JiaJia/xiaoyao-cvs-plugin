@@ -1,0 +1,7 @@
+{
+  "name": "xiaoyao-cvs",
+  "type": "module",
+  "dependencies": {
+    "simple-qrbtf": "^1.4.1"
+  }
+}
