@@ -1,21 +1,21 @@
-const APP_VERSION = '2.70.1'
-const mhyVersion = '2.11.1'
-const salt = 'S9Hrn38d2b55PamfIR9BNA3Tx9sQTOem' // k2
-const salt2 = 'LyD1rXqMv2GJhnwdvCBjFOKGiKuLY3aO' // x6
-const saltWeb = 'sjdNFJB7XxyDWGIAk0eTV8AOCfMJmyEo'// lk2
-const oldsalt = 'z8DRIUjNDT7IT5IZXvrUAxyupA1peND9'
-const passSalt = 'JwYDpKvLj6MrMqqYU6jTKF17KNO2PXoS'
-const osSalt = '' // 599uqkwc0dlqu3h6epzjzfhgyyrd44ae rk4xg2hakoi26nljpr099fv9fck1ah10
-const osSaltWeb = '' // os 浏览帖子需要用到的salt
-const web_api = 'https://api-takumi.mihoyo.com'
-const os_web_api = 'https://api-os-takumi.mihoyo.com'
-const os_hk4_api = 'https://hk4e-api-os.hoyoverse.com'
-const hk4_api = 'https://hk4e-api.mihoyo.com'
-const hk4_sdk = 'https://hk4e-sdk.mihoyo.com'
-const bbs_api = 'https://bbs-api.mihoyo.com'
-const cloud_api = 'https://api-cloudgame.mihoyo.com'
-const pass_api = 'https://passport-api.mihoyo.com'
-const app_id = 2//崩三 1 未 2 原 4 崩二 7 铁 8 绝 12
+const APP_VERSION = "2.70.1"
+const mhyVersion = "2.11.1"
+const salt = "S9Hrn38d2b55PamfIR9BNA3Tx9sQTOem" // k2
+const salt2 = "LyD1rXqMv2GJhnwdvCBjFOKGiKuLY3aO" // x6
+const saltWeb = "sjdNFJB7XxyDWGIAk0eTV8AOCfMJmyEo"// lk2
+const oldsalt = "z8DRIUjNDT7IT5IZXvrUAxyupA1peND9"
+const passSalt = "JwYDpKvLj6MrMqqYU6jTKF17KNO2PXoS"
+// const osSalt = "" // 599uqkwc0dlqu3h6epzjzfhgyyrd44ae rk4xg2hakoi26nljpr099fv9fck1ah10
+const osSaltWeb = "" // os 浏览帖子需要用到的salt
+const web_api = "https://api-takumi.mihoyo.com"
+const os_web_api = "https://api-os-takumi.mihoyo.com"
+const os_hk4_api = "https://hk4e-api-os.hoyoverse.com"
+const hk4_api = "https://hk4e-api.mihoyo.com"
+const hk4_sdk = "https://hk4e-sdk.mihoyo.com"
+const bbs_api = "https://bbs-api.mihoyo.com"
+const cloud_api = "https://api-cloudgame.mihoyo.com"
+const pass_api = "https://passport-api.mihoyo.com"
+const app_id = 2// 崩三 1 未 2 原 4 崩二 7 铁 8 绝 12
 const publicKey = `-----BEGIN PUBLIC KEY-----
 MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDDvekdPMHN3AYhm/vktJT+YJr7cI5DcsNKqdsx5DZX0gDuWFuIjzdwButrIYPNmRJ1G8ybDIF7oDW2eEpm5sMbL9zs
 9ExXCdvqrn51qELbqj0XxtMTIpaCHFSI50PfPpTFV9Xt/hmyVwokoOXFlAEgCn+Q
@@ -24,39 +24,39 @@ CgGs52bFoYMtyi+xEQIDAQAB
 const boards = {
   honkai3rd: {
     forumid: 1,
-    key: 'honkai3rd',
-    biz: 'bh3_cn',
-    actid: 'e202207181446311',
-    name: '崩坏3',
-    url: 'https://bbs.mihoyo.com/bh3/',
+    key: "honkai3rd",
+    biz: "bh3_cn",
+    actid: "e202207181446311",
+    name: "崩坏3",
+    url: "https://bbs.mihoyo.com/bh3/",
     signUrl(data, type, api) {
       let dataUrl = {}
       switch (type) {
-        case 'isSign':
+        case "isSign":
           dataUrl = {
             url: `${api}/event/luna/info`,
             query: `lang=zh-cn&region=${data.region}&act_id=${this.actid}&uid=${data.game_uid}`
           }
           break
-        case 'sign':
+        case "sign":
           dataUrl = {
             url: `${api}/event/luna/sign`,
             body: {
-              lang: 'zh-cn',
+              lang: "zh-cn",
               region: data.region,
               act_id: this.actid,
               uid: data.game_uid
             }
           }
           break
-        case 'home':
+        case "home":
           dataUrl = {
             url: `${api}/event/luna/home`,
             query: `lang=zh-cn&act_id=${this.actid}`
           }
           break
       }
-      dataUrl.types = 'sign'
+      dataUrl.types = "sign"
       return dataUrl
     },
     getReferer() {
@@ -65,22 +65,22 @@ const boards = {
   },
   genShin: {
     forumid: 26,
-    key: 'genshin',
-    biz: 'hk4e_cn',
-    osbiz: 'hk4e_global',
-    actid: 'e202311201442471',
-    name: '原神',
-    url: 'https://bbs.mihoyo.com/ys/',
+    key: "genshin",
+    biz: "hk4e_cn",
+    osbiz: "hk4e_global",
+    actid: "e202311201442471",
+    name: "原神",
+    url: "https://bbs.mihoyo.com/ys/",
     signUrl(data, type, api) {
       let dataUrl = {}
       switch (type) {
-        case 'isSign':
+        case "isSign":
           dataUrl = {
             url: `${api}/event/luna/info`,
             query: `region=${data.region}&act_id=${this.actid}&uid=${data.game_uid}`
           }
           break
-        case 'sign':
+        case "sign":
           dataUrl = {
             url: `${api}/event/luna/sign`,
             body: {
@@ -90,14 +90,14 @@ const boards = {
             }
           }
           break
-        case 'home':
+        case "home":
           dataUrl = {
             url: `${api}/event/luna/home`,
             query: `act_id=${this.actid}`
           }
           break
       }
-      dataUrl.types = 'sign'
+      dataUrl.types = "sign"
       return dataUrl
     },
     getReferer() {
@@ -106,38 +106,38 @@ const boards = {
   },
   honkai2: {
     forumid: 30,
-    biz: 'bh2_cn',
-    actid: 'e202203291431091',
-    name: '崩坏2',
-    url: 'https://bbs.mihoyo.com/bh2/',
+    biz: "bh2_cn",
+    actid: "e202203291431091",
+    name: "崩坏2",
+    url: "https://bbs.mihoyo.com/bh2/",
     signUrl(data, type, api) {
       let dataUrl = {}
       switch (type) {
-        case 'isSign':
+        case "isSign":
           dataUrl = {
             url: `${api}/event/luna/info`,
             query: `lang=zh-cn&region=${data.region}&act_id=${this.actid}&uid=${data.game_uid}`
           }
           break
-        case 'sign':
+        case "sign":
           dataUrl = {
             url: `${api}/event/luna/sign`,
             body: {
-              lang: 'zh-cn',
+              lang: "zh-cn",
               region: data.region,
               act_id: this.actid,
               uid: data.game_uid
             }
           }
           break
-        case 'home':
+        case "home":
           dataUrl = {
             url: `${api}/event/luna/home`,
             query: `lang=zh-cn&act_id=${this.actid}`
           }
           break
       }
-      dataUrl.types = 'sign'
+      dataUrl.types = "sign"
       return dataUrl
     },
     getReferer() {
@@ -146,38 +146,38 @@ const boards = {
   },
   tears: {
     forumid: 37,
-    biz: 'nxx_cn',
-    name: '未定事件簿',
-    actid: 'e202202251749321',
-    url: 'https://bbs.mihoyo.com/wd/',
+    biz: "nxx_cn",
+    name: "未定事件簿",
+    actid: "e202202251749321",
+    url: "https://bbs.mihoyo.com/wd/",
     signUrl(data, type) {
       let dataUrl = {}
       switch (type) {
-        case 'isSign':
+        case "isSign":
           dataUrl = {
             url: `${web_api}/event/luna/info`,
             query: `lang=zh-cn&region=${data.region}&act_id=${this.actid}&uid=${data.game_uid}`
           }
           break
-        case 'sign':
+        case "sign":
           dataUrl = {
             url: `${web_api}/event/luna/sign`,
             body: {
-              lang: 'zh-cn',
+              lang: "zh-cn",
               region: data.region,
               act_id: this.actid,
               uid: data.game_uid
             }
           }
           break
-        case 'home':
+        case "home":
           dataUrl = {
             url: `${web_api}/event/luna/home`,
             query: `lang=zh-cn&act_id=${this.actid}`
           }
           break
       }
-      dataUrl.types = 'sign'
+      dataUrl.types = "sign"
       return dataUrl
     },
     getReferer() {
@@ -187,8 +187,8 @@ const boards = {
   /** 以下数据待定 由于并未有存在签到入口可能后续会开放 */
   house: {
     forumid: 34,
-    name: '大别野',
-    url: 'https://bbs.mihoyo.com/dby/',
+    name: "大别野",
+    url: "https://bbs.mihoyo.com/dby/",
     signUrl(data, type, api) { // 预留方法方便后续迭代
       let dataUrl = {}
       return dataUrl
@@ -196,21 +196,21 @@ const boards = {
   },
   honkaisr: {
     forumid: 52,
-    name: '崩坏星穹铁道',
-    actid: 'e202304121516551',
-    biz: 'hkrpg_cn',
-    osbiz: 'hkrpg_global',
-    url: 'https://bbs.mihoyo.com/sr/',
+    name: "崩坏星穹铁道",
+    actid: "e202304121516551",
+    biz: "hkrpg_cn",
+    osbiz: "hkrpg_global",
+    url: "https://bbs.mihoyo.com/sr/",
     signUrl(data, type, api) { // 预留方法方便后续迭代
       let dataUrl = {}
       switch (type) {
-        case 'isSign':
+        case "isSign":
           dataUrl = {
             url: `${api}/event/luna/info`,
             query: `region=${data.region}&act_id=${this.actid}&uid=${data.game_uid}`
           }
           break
-        case 'sign':
+        case "sign":
           dataUrl = {
             url: `${api}/event/luna/sign`,
             body: {
@@ -220,14 +220,14 @@ const boards = {
             }
           }
           break
-        case 'home':
+        case "home":
           dataUrl = {
             url: `${api}/event/luna/home`,
             query: `act_id=${this.actid}`
           }
           break
       }
-      dataUrl.types = 'sign'
+      dataUrl.types = "sign"
       return dataUrl
     },
     getReferer() {
@@ -236,16 +236,16 @@ const boards = {
   },
   zzz: {
     forumid: 57,
-    name: '绝区零',
-    biz: 'nap_cn',
-    osbiz: 'nap_global',
-    url: 'https://bbs.mihoyo.com/zzz/',
+    name: "绝区零",
+    biz: "nap_cn",
+    osbiz: "nap_global",
+    url: "https://bbs.mihoyo.com/zzz/",
     signUrl(data, type, api) { // 预留方法方便后续迭代
       let dataUrl = {}
       return dataUrl
     },
     getReferer() {
-      return ``
+      return ""
     }
   }
 }

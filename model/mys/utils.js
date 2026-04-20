@@ -1,6 +1,7 @@
-import _ from 'lodash'
-import moment from 'moment'
-export async function sleepAsync (sleepms) {
+import _ from "lodash"
+import moment from "moment"
+
+async function sleepAsync(sleepms) {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       resolve()
@@ -8,27 +9,27 @@ export async function sleepAsync (sleepms) {
   })
 }
 
-export async function randomSleepAsync (end) {
+async function randomSleepAsync(end) {
   let sleep = 4 * 1000 + _.random((end || 5) * 1000)
   await sleepAsync(sleep)
 }
-export function randomString (length, os = false) {
-  let randomStr = ''
+function randomString(length, os = false) {
+  let randomStr = ""
   for (let i = 0; i < length; i++) {
     randomStr += _.sample(os
-      ? '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
-      : 'abcdefghijklmnopqrstuvwxyz0123456789')
+      ? "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+      : "abcdefghijklmnopqrstuvwxyz0123456789")
   }
   return randomStr
 }
-export async function redisDel (userId, type = 'bbs') {
+async function redisDel(userId, type = "bbs") {
   return await redis.del(`xiaoyao:${type}:${userId}`)
 }
-export async function redisGet (userId, type = 'bbs') {
+async function redisGet(userId, type = "bbs") {
   return JSON.parse(await redis.get(`xiaoyao:${type}:${userId}`))
 }
-export async function redisSet (userId = 'all', type = 'bbs', data, time = 0) {
-  let dayTime = moment(Date.now()).add('days', 1).format('YYYY-MM-DD 00:00:00')
+async function redisSet(userId = "all", type = "bbs", data, time = 0) {
+  let dayTime = moment(Date.now()).add("days", 1).format("YYYY-MM-DD 00:00:00")
   let newdate = (new Date(dayTime).getTime() - new Date().getTime()) / 1000 // 获取隔天凌晨的时间差
   if (time !== 0) {
     newdate = time
@@ -43,7 +44,7 @@ export async function redisSet (userId = 'all', type = 'bbs', data, time = 0) {
  * @param user_id qq号
  * @param msg 消息
  */
-export async function relpyPrivate (userId, msg) {
+async function relpyPrivate(userId, msg) {
   userId = Number(userId) || String(userId)
   let friend = Bot.fl.get(userId)
   if (friend) {
@@ -53,7 +54,7 @@ export async function relpyPrivate (userId, msg) {
     })
   }
 }
-export async function replyMake (e, _msg, lenght) {
+async function replyMake(e, _msg, lenght) {
   const bot = e.bot || Bot
   let nickname = bot.nickname
   if (e.isGroup) {
@@ -65,7 +66,7 @@ export async function replyMake (e, _msg, lenght) {
     }
   }
   let msgList = []
-  for (let [index, item] of Object.entries(_msg)) {
+  for (let [ index, item ] of Object.entries(_msg)) {
     if (index < lenght) {
       continue
     }
@@ -87,30 +88,30 @@ export async function replyMake (e, _msg, lenght) {
   }
 }
 
-export function getServer (uid, isSr = false) {
+function getServer(uid, isSr = false) {
   switch (String(uid).slice(0, -8)) {
-    case '1':
-    case '2':
-      return isSr ? 'prod_gf_cn' : 'cn_gf01' // 官服
-    case '5':
-      return isSr ? 'prod_qd_cn' : 'cn_qd01' // B服
-    case '6':
-      return isSr ? 'prod_official_usa' : 'os_usa' // 美服
-    case '7':
-      return isSr ? 'prod_official_euro' : 'os_euro' // 欧服
-    case '8':
-    case '18':
-      return isSr ? 'prod_official_asia' : 'os_asia' // 亚服
-    case '9':
-      return isSr ? 'prod_official_cht' : 'os_cht' // 港澳台服
+    case "1":
+    case "2":
+      return isSr ? "prod_gf_cn" : "cn_gf01" // 官服
+    case "5":
+      return isSr ? "prod_qd_cn" : "cn_qd01" // B服
+    case "6":
+      return isSr ? "prod_official_usa" : "os_usa" // 美服
+    case "7":
+      return isSr ? "prod_official_euro" : "os_euro" // 欧服
+    case "8":
+    case "18":
+      return isSr ? "prod_official_asia" : "os_asia" // 亚服
+    case "9":
+      return isSr ? "prod_official_cht" : "os_cht" // 港澳台服
   }
-  return isSr ? 'prod_gf_cn' : 'cn_gf01'
+  return isSr ? "prod_gf_cn" : "cn_gf01"
 }
-export async function getCookieMap (cookie) {
-  let cookieArray = cookie.replace(/\s*/g, '').split(';')
+async function getCookieMap(cookie) {
+  let cookieArray = cookie.replace(/\s*/g, "").split(";")
   let cookieMap = new Map()
   for (let item of cookieArray) {
-    let entry = item.replace('=', '~').split('~')
+    let entry = item.replace("=", "~").split("~")
     if (!entry[0]) continue
     cookieMap.set(entry[0], entry[1])
   }
@@ -122,7 +123,7 @@ export async function getCookieMap (cookie) {
  * @param {撤回的消息id} r
  * @param {多久撤回(秒)} times
  */
-export function recallMsg (e, r, times) {
+function recallMsg(e, r, times) {
   setTimeout(() => {
     if (e?.group?.recallMsg && r?.message_id) {
       e?.group?.recallMsg(r?.message_id)
