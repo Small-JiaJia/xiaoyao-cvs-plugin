@@ -1,12 +1,8 @@
 import fs from "node:fs"
-import {
-  promisify
-} from "node:util"
+import { promisify } from "node:util"
 import YAML from "yaml"
 import lodash from "lodash"
-import {
-  isV3
-} from "../components/Changelog.js"
+import { isV3 } from "../components/Changelog.js"
 const plugin = "xiaoyao-cvs-plugin"
 /**
  * 配置文件
@@ -172,32 +168,48 @@ class GsCfg {
     }
   }
 
+  /** 校验是否为合法游戏uid：纯数字且长度合理，排除 undefined / [object Object] / 占位符 1 等脏key */
+  isValidUid(uid) {
+    let str = String(uid ?? "").trim()
+    return /^\d{6,12}$/.test(str)
+  }
+
   saveBingStoken(userId, data) {
     let file = `./plugins/${plugin}/data/yaml/${userId}.yaml`
     if (lodash.isEmpty(data)) {
       fs.existsSync(file) && fs.unlinkSync(file)
-    } else {
-      // eslint-disable-next-line n/no-deprecated-api
-      fs.exists(file, (exists) => {
-        if (!exists) {
-          fs.writeFileSync(file, "", "utf8")
-        }
-        let ck = fs.readFileSync(file, "utf-8")
-        let yaml = YAML.stringify(data)
-        ck = YAML.parse(ck)
-        if (ck?.uid || !ck) {
-          fs.writeFileSync(file, yaml, "utf8")
-        } else {
-          if (!ck[Object.keys(data)[0]]) {
-            ck = YAML.stringify(ck)
-            fs.writeFileSync(file, yaml + ck, "utf8")
-          } else {
-            ck[Object.keys(data)[0]] = data[Object.keys(data)[0]]
-            fs.writeFileSync(file, YAML.stringify(ck), "utf8")
-          }
-        }
-      })
+      return
     }
+    // 过滤掉非法uid，避免写入 undefined / [object Object] / "1" 这类脏数据
+    let clean = {}
+    for (let [ uid, item ] of Object.entries(data)) {
+      if (!this.isValidUid(uid)) {
+        Bot.logger.debug(`[stoken保存] 跳过非法uid:${uid} (qq:${userId})`)
+        continue
+      }
+      clean[uid] = item
+    }
+    if (lodash.isEmpty(clean)) return
+    let ck = {}
+    if (fs.existsSync(file)) {
+      try {
+        ck = YAML.parse(fs.readFileSync(file, "utf-8")) || {}
+      } catch (error) {
+        Bot.logger.error(`[stoken保存] 读取 ${userId}.yaml 失败，将重建：${error.message}`)
+        ck = {}
+      }
+    }
+    // 旧格式（单uid平铺）直接覆盖为新格式
+    if (ck.uid) ck = {}
+    // 顺带清理历史遗留的非法key
+    for (let uid of Object.keys(ck)) {
+      if (!this.isValidUid(uid)) delete ck[uid]
+    }
+    Object.assign(ck, clean)
+    // 先写临时文件再重命名，避免中断产生半截文件
+    let tmp = `${file}.tmp`
+    fs.writeFileSync(tmp, YAML.stringify(ck), "utf8")
+    fs.renameSync(tmp, file)
   }
 }
 

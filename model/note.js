@@ -2,14 +2,9 @@ import fs from "node:fs"
 import YAML from "yaml"
 import lodash from "lodash"
 import moment from "moment"
-import {
-  Cfg,
-  Data
-} from "../components/index.js"
+import { Cfg, Data } from "../components/index.js"
 import Common from "../components/Common.js"
-import {
-  isV3
-} from "../components/Changelog.js"
+import { isV3 } from "../components/Changelog.js"
 import gsCfg from "./gsCfg.js"
 
 const plugin = "xiaoyao-cvs-plugin"

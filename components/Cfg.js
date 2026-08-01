@@ -28,13 +28,7 @@ let Cfg = {
     return `style=transform:scale(${pct})`
   },
   isDisable(e, rote) {
-    if (Cfg.get(rote, true)) {
-      return false
-    }
-    if (/^#*图鉴/.test(e.msg || "")) {
-      return false
-    }
-    return true
+    return !Cfg.get(rote, true)
   },
   /** 合并默认配置和用户配置 */
   merged() {

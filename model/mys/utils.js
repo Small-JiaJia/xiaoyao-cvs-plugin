@@ -133,6 +133,29 @@ function recallMsg(e, r, times) {
   }, 1000 * times)
 }
 
+/**
+ * 从二维码地址中安全解析 ticket
+ * @param url 二维码地址
+ * @returns ticket，解析失败返回空字符串
+ */
+function parseTicket(url) {
+  try {
+    return new URL(url).searchParams.get("ticket") || ""
+  } catch {
+    return ""
+  }
+}
+
+/**
+ * 脱敏账号id，仅保留首尾各两位
+ * @param id 账号id
+ */
+function maskId(id) {
+  let str = String(id ?? "")
+  if (str.length <= 4) return "****"
+  return `${str.slice(0, 2)}****${str.slice(-2)}`
+}
+
 export default {
   sleepAsync,
   redisDel,
@@ -144,5 +167,7 @@ export default {
   redisSet,
   recallMsg,
   relpyPrivate,
-  getCookieMap
+  getCookieMap,
+  parseTicket,
+  maskId
 }

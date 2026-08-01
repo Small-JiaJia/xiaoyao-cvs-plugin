@@ -4,13 +4,9 @@ import md5 from "md5"
 import _ from "lodash"
 import YAML from "yaml"
 import fetch from "node-fetch"
-import {
-  Data
-} from "../../components/index.js"
+import { Data } from "../../components/index.js"
 import gsCfg from "../gsCfg.js"
-import {
-  isV3
-} from "../../components/Changelog.js"
+import { isV3 } from "../../components/Changelog.js"
 import utils from "./utils.js"
 import mys from "./mysTool.js"
 
@@ -115,12 +111,18 @@ export default class miHoYoApi {
       return false
     }
 
-    let res = await response.text()
-    // Bot.logger.mark(`[接口][${type}][${this.e.uid}] ${Date.now() - start}ms\n${res}`)
-    if (res.startsWith("(")) {
-      res = JSON.parse((res).replace(/\(|\)/g, ""))
-    } else {
-      res = JSON.parse(res)
+    let text = await response.text()
+    if (!text) {
+      // 接口下线或参数不被接受时会返回空body，早期直接 JSON.parse 会抛 unexpected end of JSON input
+      Bot.logger.error(`[接口][${type}] 返回内容为空(${response.status})，接口可能已变更`)
+      return false
+    }
+    let res
+    try {
+      res = JSON.parse(text.startsWith("(") ? text.replace(/\(|\)/g, "") : text)
+    } catch (err) {
+      Bot.logger.error(`[接口][${type}] 响应解析失败：${err.message}\n内容片段：${text.slice(0, 200)}`)
+      return false
     }
     if (!res) {
       Bot.logger.mark("mys接口没有返回")
@@ -131,7 +133,12 @@ export default class miHoYoApi {
     }
     res.api = type
     if (type == "loginByPassword") {
-      res.aigis_data = JSON.parse(response.headers.get("x-rpc-aigis"))
+      let aigis = response.headers.get("x-rpc-aigis")
+      try {
+        res.aigis_data = aigis ? JSON.parse(aigis) : null
+      } catch {
+        res.aigis_data = null
+      }
     }
     return res
   }
@@ -220,11 +227,8 @@ export default class miHoYoApi {
         query: `login_ticket=${data.loginTicket}&token_types=3&uid=${data.loginUid}`,
         types: "stoken"
       },
-      // 很抱歉由于有人恶意倒卖，不得已只能是关闭免费token了 开放免费供人使用还被恶意倒卖指责 开源确实不好弄捏
-      validate: {
-        url: "http://api.fuckmys.tk/geetest",
-        query: `token=${data?.getToken}&gt=${data.gt}&challenge=${data.challenge}`
-      },
+      // 第三方验证码接口（明文 HTTP，会泄露 token/gt/challenge）已移除
+      // 如需人工验证请自行接入官方或自托管的 HTTPS 验证页面
       cloudLogin: {
         url: `${mys.cloud_api}/hk4e_cg_cn/gamer/api/login`,
         types: "cloud"
@@ -279,20 +283,16 @@ export default class miHoYoApi {
         types: "pass"
       },
       qrCodeLogin: {
-        url: `${mys.hk4_sdk}/hk4e_cn/combo/panda/qrcode/fetch`,
-        body: {
-          app_id: mys.app_id,
-          device: data.device
-        }
+        url: `${mys.pass_api}/account/ma-cn-passport/app/createQRLogin`,
+        body: {},
+        types: "pass"
       },
       qrCodeQuery: {
-        url: `${mys.hk4_sdk}/hk4e_cn/combo/panda/qrcode/query`,
+        url: `${mys.pass_api}/account/ma-cn-passport/app/queryQRLoginStatus`,
         body: {
-          // passpot_app_id: 'bll8iq97cem8',
-          app_id: mys.app_id,
-          device: data.device,
           ticket: data.ticket
-        }
+        },
+        types: "pass"
       },
       getTokenByGameToken: {
         url: `${mys.pass_api}/account/ma-cn-session/app/getTokenByGameToken`,
@@ -317,31 +317,6 @@ export default class miHoYoApi {
       getCookieAccountInfoByGameToken: {
         url: `${mys.web_api}/auth/api/getCookieAccountInfoByGameToken`,
         query: `account_id=${data.uid}&game_token=${data.token}`
-      },
-      createOrder: {
-        url: `${mys.hk4_sdk}/hk4e_cn/mdk/atropos/api/createOrder`,
-        body: {
-          "special_info": "topup_center",
-          "order": data.order,
-          "sign": this.gen_sign(data.order)
-        },
-        types: "pay"
-      },
-      goodsList: {
-        url: `${mys.hk4_sdk}/hk4e_cn/mdk/shopwindow/shopwindow/fetchGoods`,
-        body: {
-          "released_flag": true,
-          "game": "hk4e_cn",
-          "region": "cn_gf01",
-          "uid": "1",
-          "account": "1"
-        },
-        types: "pay"
-      },
-      checkOrder: {
-        url: `${mys.hk4_sdk}/hk4e_cn/mdk/atropos/api/checkOrder`,
-        query: `game=hk4e_cn&region=${utils.getServer(data.uid)}&order_no=${data.order_no}&uid=${data.uid}`,
-        types: "pay"
       }
     }
     if (!urlMap[type]) return false
@@ -450,7 +425,8 @@ export default class miHoYoApi {
           "Referer": "https://app.mihoyo.com",
           "Origin": "https://webstatic.mihoyo.com",
           "Cookie": this.cookies,
-          "DS": this.getDs(this.isOs ? mys.osSalt : mys.saltWeb),
+          // osSalt 未提供，国际服暂回退到 saltWeb
+          "DS": this.getDs(mys.saltWeb),
           "x-rpc-sys_version": "12",
           "x-rpc-channel": "mihoyo",
           "x-rpc-device_id": DEVICE_ID,
@@ -508,29 +484,6 @@ export default class miHoYoApi {
           "Cookie": this.cookies
         }
         break
-      case "pay":
-        header = {
-          "Accept": "application/json, text/plain, */*",
-          "Accept-Encoding": "gzip, deflate, br",
-          "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6",
-          "Cache-Control": "no-cache",
-          "Connection": "keep-alive",
-          "Content-Type": "application/json;charset=UTF-8",
-          "Pragma": "no-cache",
-          "Referer": "https://webstatic.mihoyo.com/",
-          "sec-ch-ua": "\"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"108\", \"Microsoft Edge\";v=\"108\"",
-          "sec-ch-ua-mobile": "?0",
-          "sec-ch-ua-platform": "\"Windows\"",
-          "Sec-Fetch-Dest": "empty",
-          "Sec-Fetch-Mode": "cors",
-          "Sec-Fetch-Site": "same-site",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36 Edg/108.0.1462.54",
-          "x-rpc-client_type": "4",
-          "x-rpc-device_id": "3b401c79-e221-46b9-8ca5-2e072e367333",
-          "x-rpc-language": "zh-cn",
-          "Cookie": this.cookie
-        }
-        break
       default:
         header = {}
         break
@@ -538,33 +491,22 @@ export default class miHoYoApi {
     return header
   }
 
-  gen_sign(data) {
-    if (!data) return ""
-    let d = Object.keys(data).sort()
-    let news = {}
-    for (const item of d) {
-      news[item] = data[item]
-    }
-    // let sign = this.HMCASHA256(Object.values(news).join(''))
-    let sign = crypto.createHmac("sha256", "6bdc3982c25f3f3c38668a32d287d16b").update(Object.values(news).join("")).digest("hex")
-    return sign
-  }
-
   getStoken(userId) {
     let file = `${yamlDataUrl}/${userId}.yaml`
     try {
       let ck = fs.readFileSync(file, "utf-8")
       ck = YAML.parse(ck)
-      if (ck?.uid) {
+      if (gsCfg.isValidUid(ck?.uid)) {
         let datalist = {}
         ck.userId = this.e.user_id
         datalist[ck.uid] = ck
         ck = datalist
         gsCfg.saveBingStoken(this.e.user_id, datalist)
       }
-      if (!ck[this.e.uid]) {
+      // 扫码登录等场景下 e.uid 尚不存在，跳过按uid的补录，避免反复尝试写入非法key
+      if (gsCfg.isValidUid(this.e.uid) && !ck[this.e.uid]) {
         let user = this.e.user?.getMysUser()
-        if (user.ltuid) {
+        if (user?.ltuid) {
           const sk = Object.values(ck).filter(i => Number(i.stuid) === Number(user.ltuid))
           if (sk?.[0]) {
             sk[0].uid = String(this.e.uid)

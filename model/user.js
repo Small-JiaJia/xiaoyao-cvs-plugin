@@ -5,12 +5,8 @@ import lodash from "lodash"
 import moment from "moment"
 import miHoYoApi from "../model/mys/mihoyoApi.js"
 import utils from "../model/mys/utils.js"
-import {
-  isV3
-} from "../components/Changelog.js"
-import {
-  Data
-} from "../components/index.js"
+import { isV3 } from "../components/Changelog.js"
+import { Data } from "../components/index.js"
 import gsCfg from "./gsCfg.js"
 
 const _path = process.cwd()
@@ -341,13 +337,14 @@ export default class user {
           }
           await utils.randomSleepAsync(2)
         }
+        // 该接口为“获取分享配置”，并非分享上报，不能据此判定分享任务完成
         res = await this.getData("bbsShareConf", {
           postId
         }, false)
         if (res?.message && res?.retcode == 0) {
           Share++
         }
-        message += `共读取帖子记录${20 * sumcount}\n浏览：${trueDetail}  点赞：${Vote}  分享：${Share}\n`
+        message += `共读取帖子记录${20 * sumcount}\n浏览：${trueDetail}  点赞：${Vote}  分享配置：${Share}\n`
         Bot.logger.mark(`\n用户${this.e.user_id}:\n${message}`)
         await utils.randomSleepAsync(3)
       }
@@ -586,7 +583,13 @@ export default class user {
     let isPushSign = this.configSign.isPushSign
     let userIdList = Object.keys(stoken)
     if (bbsTask) {
-      e.reply("米游币自动签到任务进行中，请勿重复触发指令")
+      // 定时任务传入的 e 可能是字符串，不能直接当事件对象用
+      let busy = "米游币自动签到任务进行中，请勿重复触发指令"
+      if (mul && typeof e?.reply === "function") {
+        e.reply(busy)
+      } else {
+        Bot.logger.mark(busy)
+      }
       return false
     }
     let tips = [ "开始米游币签到任务" ]
@@ -608,86 +611,66 @@ export default class user {
     bbsTask = true
     let _reply = e.reply
     let counts = 0
-    // 获取需要签到的用户
-    for (let dataUid of stoken) {
-      for (let uuId in dataUid) {
-        try {
-          if (uuId[0] * 1 > 5) {
-            continue
-          }
-          let data = dataUid[uuId]
-          let user_id = data.userId * 1
-          let e = {
-            user_id,
-            isTask: true
-          }
-          counts++
-          e.cookie = `stuid=${data.stuid};stoken=${data.stoken};ltoken=${data.ltoken};`
-          Bot.logger.mark(`[米游币签到][第${counts}个]正在为qq${user_id}：uid:${uuId}签到中...`)
-          e.msg = "全部"
-          e.reply = (msg) => {
-            // 关闭签到消息推送
-            if (!isPushSign || mul) {
-              return
+    // 米游币属账号级，同一 stuid 每天只需执行一次
+    let doneStuid = new Set()
+    try {
+      for (let dataUid of stoken) {
+        for (let uuId in dataUid) {
+          try {
+            if (uuId[0] * 1 > 5) {
+              continue
             }
-            if (msg.includes("OK")) { // 签到成功并且不是已签到的才推送
-              utils.relpyPrivate(user_id, msg + "uid:" + uuId + "\n自动签到成功")
+            let data = dataUid[uuId]
+            if (doneStuid.has(String(data.stuid))) {
+              continue
             }
+            doneStuid.add(String(data.stuid))
+            let user_id = data.userId * 1
+            let e = {
+              user_id,
+              isTask: true
+            }
+            counts++
+            e.cookie = `stuid=${data.stuid};stoken=${data.stoken};ltoken=${data.ltoken};`
+            Bot.logger.mark(`[米游币签到][第${counts}个]正在为qq${user_id}：uid:${uuId}签到中...`)
+            e.msg = "全部"
+            e.reply = (msg) => {
+              // 关闭签到消息推送
+              if (!isPushSign || mul) {
+                return
+              }
+              if (msg.includes("OK")) { // 签到成功并且不是已签到的才推送
+                utils.relpyPrivate(user_id, msg + "uid:" + uuId + "\n自动签到成功")
+              }
+            }
+            this.e = e
+            // await 代表同步 你可以尝试去除await以进行优化速度
+            let res = await this.getbbsSign(this.ForumData)
+            e.reply(res.message)
+            await utils.sleepAsync(10000)
+          } catch (error) {
+            logger.error("米游币签到报错：" + error)
           }
-          this.e = e
-          // await 代表同步 你可以尝试去除await以进行优化速度
-          let res = await this.getbbsSign(this.ForumData)
-          e.reply(res.message)
-          await utils.sleepAsync(10000)
-        } catch (error) {
-          logger.error("米游币签到报错：" + error)
         }
       }
+      let msg = "米社米币签到任务完成"
+      Bot.logger.mark(msg)
+      if (mul) {
+        _reply(msg)
+      } else {
+        await utils.relpyPrivate(await gsCfg.getMasterQQ(), msg)
+      }
+    } finally {
+      bbsTask = false
     }
-    let msg = "米社米币签到任务完成"
-    Bot.logger.mark(msg)
-    if (mul) {
-      _reply(msg)
-    } else {
-      await utils.relpyPrivate(await gsCfg.getMasterQQ(), msg)
-    }
-    bbsTask = false
   }
 
+  // 第三方验证码服务已移除，遇到验证码时不再自动过码
   async bbsGeetest() {
-    if (!this.getToken) return ""
-    try {
-      let res = await this.getData("bbsGetCaptcha", false)
-      // let challenge = res.data["challenge"]
-      // await this.getData("geeType", res.data, false)
-      res.data.getToken = this.getToken
-      res = await this.getData("validate", res.data, false)
-      if (res?.data?.validate) {
-        res = await this.getData("bbsCaptchaVerify", res.data, false)
-        return res.data.challenge
-      }
-    } catch (error) {
-      // 大概率是数据空导致报错这种情况很少见捏，所以你可以忽略不看
-      Bot.logger.error("[validate][接口请求]异常信息：" + error)
-      return ""
-    }
     return ""
   }
 
-  async geetest(data) {
-    if (!this.getToken) return ""
-    try {
-      data.getToken = this.getToken
-      let res = await this.getData("validate", data, false)
-      if (res?.data?.validate) {
-        let validate = res?.data?.validate
-        return validate
-      }
-    } catch (error) {
-      // 大概率是数据空导致报错这种情况很少见捏，所以你可以忽略不看
-      Bot.logger.error("[validate][接口请求]异常信息：" + error)
-      return ""
-    }
+  async geetest() {
     return ""
   }
 
@@ -817,27 +800,20 @@ export default class user {
   }
 
   async seachUid(data) {
-    let ltoken = ""; let v2Sk
+    let ltoken = ""
     if (data?.data) {
       let res
       if (this.e.sk) {
         if (this.e.sk.get("stoken").includes("v2_")) {
           res = await this.getData("getLtoken", { cookies: this.e.raw_message }, false)
           ltoken = res?.data?.ltoken
-        } else {
-          v2Sk = await this.getData("getByStokenV2", { headers: { Cookie: this.e.raw_message } }, false)
         }
         this.e.cookie =
           `ltoken=${this.e.sk?.get("ltoken") || ltoken};ltuid=${this.e.sk?.get("stuid")};cookie_token=${data.data.cookie_token}; account_id=${this.e.sk?.get("stuid")};`
-        // if(this.e.sk?.get('mid')){
-        // this.e.cookie =
-        // `ltoken_v2=${this.e.sk?.get('ltoken')||ltoken};cookie_token_v2=${data.data.cookie_token}; account_mid_v2=${this.e.sk.get('mid')};ltmid_v2=${this.e.sk.get('mid')}`
-        // }
       } else {
         this.e.cookie = this.e.original_msg // 发送的为cookies
         this.cookies = `stuid=${this.e.stuid};stoken=${data?.data?.list[0].token};ltoken=${data?.data?.list[1].token}`
         res = await this.getData("getLtoken", { cookies: this.cookies }, false)
-        v2Sk = await this.getData("getByStokenV2", { headers: { Cookie: this.cookies } }, false)
       }
       let list = []
       for (let item of [ "绝区零", "崩坏星穹铁道", "原神" ]) {
@@ -848,22 +824,29 @@ export default class user {
         list.push(...result?.data?.list)
       }
       if (list.length == 0) return false
+      // 合并全部角色后一次性写入，避免逐个保存互相覆盖
+      let datalist = {}
       for (let s of list) {
-        let datalist = {}
         let uid = s.game_uid
+        // 米游社偶尔返回缺失或非数字的 game_uid，直接跳过避免写出脏key
+        if (!gsCfg.isValidUid(uid)) {
+          Bot.logger.mark(`[stoken绑定] 跳过异常角色 game_uid:${JSON.stringify(uid)} region:${s.region}`)
+          continue
+        }
+        uid = String(uid)
         datalist[uid] = {
           stuid: this.e?.sk?.get("stuid") || this.e.stuid,
-          stoken: v2Sk?.data?.token?.token || this.e?.sk?.get("stoken") || data?.data?.list[0].token,
+          stoken: this.e?.sk?.get("stoken") || data?.data?.list[0].token,
           ltoken: this.e?.sk?.get("ltoken") || ltoken || data?.data?.list[1].token,
-          mid: this.e?.sk?.get("mid") || v2Sk?.data?.user_info?.mid,
+          mid: this.e?.sk?.get("mid"),
           uid,
           userId: this.e.user_id,
           is_sign: true,
           region_name: s.region_name,
           region: s.region
         }
-        await gsCfg.saveBingStoken(this.e.user_id, datalist)
       }
+      gsCfg.saveBingStoken(this.e.user_id, datalist)
       logger.mark(`绑定stoken成功 [ltuid:${this.e?.sk?.get("stuid") || this.e.stuid}]`)
       let msg = `米游社UID: ${this.e?.sk?.get("stuid") || this.e.stuid}`
       msg += "\nstoken绑定成功您可通过下列指令进行操作:"
