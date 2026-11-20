@@ -13,6 +13,8 @@ import mys from "./mysTool.js"
 const _path = process.cwd()
 const DEVICE_ID = utils.randomString(32).toUpperCase()
 const DEVICE_NAME = utils.randomString(_.random(1, 10))
+const DEVICE_MODEL = utils.randomString(16)
+const PASS_APP_VERSION = "2.112.0"
 const yamlDataUrl = `${_path}/plugins/xiaoyao-cvs-plugin/data/yaml`
 let HttpsProxyAgent = ""
 // 米游社的版块
@@ -95,7 +97,7 @@ export default class miHoYoApi {
       param.method = "get"
     }
     // 用于处理特殊情况
-    if (data.method) {
+    if (data.method && type !== "getLtoken" && !(type === "bbsGetCookie" && !this.isOs)) {
       param.method = data.method
     }
     let response = {}
@@ -120,8 +122,8 @@ export default class miHoYoApi {
     let res
     try {
       res = JSON.parse(text.startsWith("(") ? text.replace(/\(|\)/g, "") : text)
-    } catch (err) {
-      Bot.logger.error(`[接口][${type}] 响应解析失败：${err.message}\n内容片段：${text.slice(0, 200)}`)
+    } catch {
+      Bot.logger.error(`[接口][${type}] 响应不是有效 JSON`)
       return false
     }
     if (!res) {
@@ -129,7 +131,7 @@ export default class miHoYoApi {
       return false
     }
     if (res.retcode !== 0) {
-      Bot.logger.debug(`[米游社接口][请求参数] ${url} ${JSON.stringify(param)}`)
+      Bot.logger.debug(`[米游社接口][${type}] retcode:${res.retcode}`)
     }
     res.api = type
     if (type == "loginByPassword") {
@@ -218,9 +220,9 @@ export default class miHoYoApi {
         types: "bbs"
       },
       bbsGetCookie: {
-        url: `${this.apiMap.apiWeb}/auth/api/getCookieAccountInfoBySToken`,
-        query: `game_biz=hk4e_cn&${data.cookies}`,
-        types: ""
+        url: this.isOs ? `${this.apiMap.apiWeb}/auth/api/getCookieAccountInfoBySToken` : `${mys.pass_api}/account/auth/api/getCookieAccountInfoBySToken`,
+        query: this.isOs ? `game_biz=hk4e_cn&${data.cookies}` : "",
+        types: this.isOs ? "" : "pass"
       },
       bbsStoken: {
         url: `${this.apiMap.apiWeb}/auth/api/getMultiTokenByLoginTicket`,
@@ -263,7 +265,7 @@ export default class miHoYoApi {
       },
       getLtoken: {
         url: `${mys.pass_api}/account/auth/api/getLTokenBySToken`,
-        query: `${data?.cookies?.replace(/;/g, "&")}`
+        types: "pass"
       },
       // 用于手动过验证码，账号密码登录需要
       microgg: {
@@ -330,11 +332,26 @@ export default class miHoYoApi {
     if (query) url += `?${query}`
     if (body) body = JSON.stringify(body)
     let headers = this.getHeaders(board, types, sign, body, query)
+    if (type === "getLtoken" || (type === "bbsGetCookie" && !this.isOs)) {
+      headers.Cookie = this.getTokenCookie(data.cookies)
+    }
     return {
       url,
       headers,
       body
     }
+  }
+
+  getTokenCookie(cookie = "") {
+    const fields = new Map()
+    for (const part of cookie.split(/[;&]/)) {
+      const at = part.indexOf("=")
+      if (at >= 0) fields.set(part.slice(0, at).trim(), part.slice(at + 1).trim())
+    }
+    const stuid = fields.get("stuid") || fields.get("uid") || fields.get("account_id") || fields.get("ltuid")
+    const stoken = fields.get("stoken") || fields.get("stoken_v2")
+    const mid = fields.get("mid")
+    return [stuid ? `stuid=${stuid};` : "", stoken ? `stoken=${stoken};` : "", mid ? `mid=${mid};` : ""].join("")
   }
 
   // 签到的 headers
@@ -468,9 +485,10 @@ export default class miHoYoApi {
           "x-rpc-app_id": "bll8iq97cem8",
           "x-rpc-device_name": DEVICE_NAME,
           "x-rpc-device_fp": "38d7ee0e96649",
-          "x-rpc-device_model": utils.randomString(16),
-          "x-rpc-app_version": mys.APP_VERSION,
+          "x-rpc-device_model": DEVICE_MODEL,
+          "x-rpc-app_version": PASS_APP_VERSION,
           "x-rpc-game_biz": "bbs_cn",
+          "Accept": "application/json",
           "x-rpc-sys_version": "11",
           "x-rpc-aigis": "",
           "Content-Type": "application/json;",

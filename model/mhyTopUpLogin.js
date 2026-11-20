@@ -1,6 +1,8 @@
 import User from "./user.js"
 import utils from "./mys/utils.js"
 
+const TOKEN_KINDS = { stoken: 1, stoken_v2: 1, ltoken: 2, ltoken_v2: 2, cookie_token: 4 }
+
 export default class mysTopLogin {
   constructor(e) {
     this.e = e
@@ -40,10 +42,10 @@ export default class mysTopLogin {
   pickToken(tokens = [], names = []) {
     if (!Array.isArray(tokens)) return false
     for (const name of names) {
-      const token = tokens.find(item => item?.name == name)
-      if (token?.token) return token
+      const token = tokens.find(item => item?.token && (item.name === name || Number(item.token_type) === TOKEN_KINDS[name]))
+      if (token) return token
     }
-    return tokens.find(item => item?.token)
+    return false
   }
 
   async GetQrCode(ticket) {
@@ -76,7 +78,6 @@ export default class mysTopLogin {
       return false
     }
 
-    // 新版接口确认后直接在 tokens 中返回 stoken，无需再走 getTokenByGameToken/exchange
     const stoken = this.pickToken(res.data?.tokens, [ "stoken_v2", "stoken" ])?.token
     const stuid = res.data?.user_info?.aid || res.data?.user_info?.uid || res.data?.user_info?.account_id
     const mid = res.data?.user_info?.mid
@@ -87,13 +88,14 @@ export default class mysTopLogin {
     }
 
     const stokenCookie = [ `stuid=${stuid}`, `stoken=${stoken}`, mid ? `mid=${mid}` : "" ].filter(Boolean).join(";") + ";"
-    const ltokenRes = await this.user.getData("getLtoken", { cookies: stokenCookie }, false)
-    const ltoken = this.pickToken(res.data?.tokens, [ "ltoken", "ltoken_v2" ])?.token ||
-      ltokenRes?.data?.ltoken || ltokenRes?.data?.token?.token
+    let ltoken = this.pickToken(res.data?.tokens, [ "ltoken", "ltoken_v2" ])?.token
+    let ltokenRes
+    if (!ltoken) {
+      ltokenRes = await this.user.getData("getLtoken", { cookies: stokenCookie }, false)
+      ltoken = ltokenRes?.data?.ltoken || ltokenRes?.data?.token?.token
+    }
 
-    let cookies = `uid=${stuid}&stoken=${stoken}`
-    if (mid) cookies += `&mid=${mid}`
-    const ck = await this.user.getData("bbsGetCookie", { cookies }, false)
+    const ck = await this.user.getData("bbsGetCookie", { cookies: stokenCookie }, false)
     const cookieToken = ck?.data?.cookie_token
     if (!ltoken || !cookieToken) {
       Bot.logger.error(`[扫码登录] 换取ck失败 ck_retcode:${ck?.retcode} lt_retcode:${ltokenRes?.retcode}`)
@@ -148,13 +150,27 @@ export default class mysTopLogin {
       Bot.logger.mark(`[米哈游登录] retcode:${res?.retcode}`)
     }
     if (res.retcode == 0) {
-      let cookies = `stoken=${res.data.token.token}&mid=${res.data.user_info.mid}`
-      let cookie_token = await this.user.getData("bbsGetCookie", { cookies })
-      let ltoken = await this.user.getData("getLtoken", { cookies: `${cookies}` }, false)
-      Bot.logger.mark(`[米哈游登录] ${Bot.logger.mark(JSON.stringify(cookie_token))}`)
+      const stoken = res.data?.token?.token
+      const info = res.data?.user_info || {}
+      const stuid = info.aid || info.uid || info.account_id
+      if (!stoken || !stuid) {
+        await this.e.reply("登录返回信息不完整，未能获取stoken", true)
+        return false
+      }
+      const cookies = `stuid=${stuid};stoken=${stoken};${info.mid ? `mid=${info.mid};` : ""}`
+      const ck = await this.user.getData("bbsGetCookie", { cookies }, false)
+      const lt = await this.user.getData("getLtoken", { cookies }, false)
+      const cookieToken = ck?.data?.cookie_token
+      const ltoken = lt?.data?.ltoken || lt?.data?.token?.token
+      if (!cookieToken || !ltoken) {
+        Bot.logger.error(`[米哈游登录] 换取ck失败 ck_retcode:${ck?.retcode} lt_retcode:${lt?.retcode}`)
+        await this.e.reply(`获取ck失败：${ck?.message || lt?.message || "接口返回为空"}`, true)
+        return false
+      }
+      Bot.logger.mark(`[米哈游登录] 凭据获取成功 aid:${utils.maskId(stuid)}`)
       return {
-        cookie: `ltoken=${ltoken?.data?.ltoken};ltuid=${res.data.user_info.aid};cookie_token=${cookie_token?.data?.cookie_token};`,
-        stoken: `${cookies.replace("&", ";")};stuid=${res.data.user_info.aid};`
+        cookie: `ltoken=${ltoken};ltuid=${stuid};cookie_token=${cookieToken};account_id=${stuid};`,
+        stoken: cookies
       }
     } else {
       await this.e.reply(`登录失败：${res?.message || "未知错误"}(retcode:${res?.retcode})`, true)
