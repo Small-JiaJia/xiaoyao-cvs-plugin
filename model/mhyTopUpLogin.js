@@ -90,10 +90,8 @@ export default class mysTopLogin {
     const stokenCookie = [ `stuid=${stuid}`, `stoken=${stoken}`, mid ? `mid=${mid}` : "" ].filter(Boolean).join(";") + ";"
     let ltoken = this.pickToken(res.data?.tokens, [ "ltoken", "ltoken_v2" ])?.token
     if (!ltoken) {
-      const ltokenRes = mid
-        ? await this.user.getData("exchange", { token: stoken, mid, headers: { Cookie: stokenCookie } }, false)
-        : await this.user.getData("getLtoken", { cookies: stokenCookie }, false)
-      if (ltokenRes?.retcode === 0) ltoken = ltokenRes.data?.token?.token || ltokenRes.data?.ltoken
+      const ltokenRes = await this.user.getData("getLtoken", { cookies: stokenCookie }, false)
+      if (ltokenRes?.retcode === 0) ltoken = ltokenRes.data?.ltoken || ltokenRes.data?.token?.token
       if (!ltoken) {
         Bot.logger.error(`[扫码登录] 换取ltoken失败 retcode:${ltokenRes?.retcode}`)
         await this.e.reply(`获取ltoken失败：${ltokenRes?.message || "接口返回为空"}`, true)

@@ -131,7 +131,12 @@ export default class miHoYoApi {
       return false
     }
     if (res.retcode !== 0) {
-      Bot.logger.debug(`[米游社接口][${type}] retcode:${res.retcode}`)
+      if (type === "bbsGetCookie") {
+        const { hostname, pathname } = new URL(url)
+        Bot.logger.warn(`[米游社接口][${type}] ${hostname}${pathname} retcode:${res.retcode}`)
+      } else {
+        Bot.logger.debug(`[米游社接口][${type}] retcode:${res.retcode}`)
+      }
     }
     res.api = type
     if (type == "loginByPassword") {
