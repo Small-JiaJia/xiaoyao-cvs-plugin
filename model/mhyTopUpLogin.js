@@ -89,17 +89,23 @@ export default class mysTopLogin {
 
     const stokenCookie = [ `stuid=${stuid}`, `stoken=${stoken}`, mid ? `mid=${mid}` : "" ].filter(Boolean).join(";") + ";"
     let ltoken = this.pickToken(res.data?.tokens, [ "ltoken", "ltoken_v2" ])?.token
-    let ltokenRes
     if (!ltoken) {
-      ltokenRes = await this.user.getData("getLtoken", { cookies: stokenCookie }, false)
-      ltoken = ltokenRes?.data?.ltoken || ltokenRes?.data?.token?.token
+      const ltokenRes = mid
+        ? await this.user.getData("exchange", { token: stoken, mid, headers: { Cookie: stokenCookie } }, false)
+        : await this.user.getData("getLtoken", { cookies: stokenCookie }, false)
+      if (ltokenRes?.retcode === 0) ltoken = ltokenRes.data?.token?.token || ltokenRes.data?.ltoken
+      if (!ltoken) {
+        Bot.logger.error(`[扫码登录] 换取ltoken失败 retcode:${ltokenRes?.retcode}`)
+        await this.e.reply(`获取ltoken失败：${ltokenRes?.message || "接口返回为空"}`, true)
+        return false
+      }
     }
 
     const ck = await this.user.getData("bbsGetCookie", { cookies: stokenCookie }, false)
     const cookieToken = ck?.data?.cookie_token
-    if (!ltoken || !cookieToken) {
-      Bot.logger.error(`[扫码登录] 换取ck失败 ck_retcode:${ck?.retcode} lt_retcode:${ltokenRes?.retcode}`)
-      await this.e.reply(`获取ck失败：${ck?.message || ltokenRes?.message || "接口返回为空"}`, true)
+    if (!cookieToken) {
+      Bot.logger.error(`[扫码登录] 换取ck失败 ck_retcode:${ck?.retcode}`)
+      await this.e.reply(`获取ck失败：${ck?.message || "接口返回为空"}`, true)
       return false
     }
 
