@@ -317,7 +317,7 @@ export default class miHoYoApi {
             "token_type": 1
           },
           "mid": data.mid,
-          "dst_token_type": 2
+          "dst_token_type": 4
         },
         types: "pass"
       },
