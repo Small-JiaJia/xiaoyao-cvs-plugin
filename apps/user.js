@@ -257,20 +257,7 @@ export async function bindStoken(e, uid = "") {
   e.region = getServer(e.uid)
   e.cks = msg.replace(/;/g, "&").replace(/stuid/, "uid")
   e.sk = await utils.getCookieMap(msg)
-  let res = await user.getData("bbsGetCookie", { cookies: e.cks }, false)
-  if (!res?.data) {
-    e.uid = "64"
-    e.region = getServer(e.uid)
-    res = await user.getData("bbsGetCookie", { cookies: e.cks, method: "post" }, false)
-    if (!res?.data) {
-      await e.reply(`绑定Stoken失败，异常：${res?.message}\n请发送【stoken帮助】查看配置教程重新配置~`)
-      return true
-    } else {
-      await user.seachUid(res)
-      return true
-    }
-  }
-  // await user.getCookie(e)
+  let res = await user.getData("exchange", { token: e.sk?.get("stoken"), mid: e.sk?.get("mid") }, false)
   await user.seachUid(res)
   return true
 }
@@ -346,16 +333,12 @@ export async function updCookie(e) {
     if (ltuids.includes(Number(stoken[item].stuid))) continue
 
     ltuids.push(Number(stoken[item].stuid))
-    let cookies = `uid=${stoken[item].stuid}&stoken=${stoken[item].stoken}`
-    if (stoken[item]?.mid) cookies += `&mid=${stoken[item]?.mid}`
-    let data = { cookies }
-    if (e?.uid[0] > 5) data.method = "post"
-    let res = await user.getData("bbsGetCookie", data, false)
+    let res = await user.getData("exchange", { token: stoken[item].stoken, mid: stoken[item]?.mid }, false)
     if (!res?.data) {
       e.reply(`uid:${stoken[item].uid},请求异常：${res.message}`)
       continue
     }
-    let ck = res.data.cookie_token
+    let ck = res.data.token.token
     e.msg = `ltoken=${stoken[item].ltoken};ltuid=${stoken[item].stuid};cookie_token=${ck}; account_id=${stoken[item].stuid};`
     if (isGet) {
       sendMsg = [ ...sendMsg, ...[ `uid:${stoken[item].uid}`, e.msg ] ]
