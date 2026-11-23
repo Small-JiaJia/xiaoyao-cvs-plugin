@@ -8,6 +8,23 @@ yunzai-bot 扩展插件，提供米游社签到、米游币、体力查询等功
 
 逍遥插件为 Yunzai-Bot 提供米游社相关功能支持。
 
+## 本地修改说明
+
+> 本 fork 在原版基础上修复了 **米游社 stoken 升级为 v2 格式后 `#扫码登录` 失败** 的问题。
+> 若你从原仓库更新代码，以下改动会被覆盖，需要重新合并。
+
+### 问题背景
+
+米游社改版后，扫码登录 `queryQRLoginStatus` 返回的 token 从 v1（纯字母数字）变为
+**v2 格式**（`v2_xxx==.CAE=`，`token_type: 1`）。原版调用链因此全部失效：
+
+| 环节 | 原版做法 | 失败原因 |
+| --- | --- | --- |
+| 换 CK | `getCookieAccountInfoBySToken` | 该接口只接受 v1 stoken，v2 会返回 `1002` |
+| 换 ltoken | `getLTokenBySToken` | 同上，另有成对方法 `getLTokenBySTokenV1` 可佐证 v1/v2 分离 |
+| ltoken 取值 | `ltoken=${token}` 直接把 stoken 当 ltoken | v1 时代碰巧可用，v2 下彻底不可用 |
+
+
 ## 功能特性
 
 - stoken 相关功能支持
@@ -19,14 +36,9 @@ yunzai-bot 扩展插件，提供米游社签到、米游币、体力查询等功
 
 ## 安装教程
 
-使用 gitee：
-```
-git clone https://gitee.com/Ctrlcvs/xiaoyao-cvs-plugin.git ./plugins/xiaoyao-cvs-plugin/
-```
-
 使用 github：
 ```
-git clone https://github.com/Ctrlcvs/xiaoyao-cvs-plugin.git ./plugins/xiaoyao-cvs-plugin/
+git clone https://github.com/Small-JiaJia/xiaoyao-cvs-plugin.git ./plugins/xiaoyao-cvs-plugin/
 ```
 
 ## 使用说明
@@ -64,3 +76,8 @@ git clone https://github.com/Ctrlcvs/xiaoyao-cvs-plugin.git ./plugins/xiaoyao-cv
 - Yunzai-Bot 官方 QQ 群：213938015（暂时停止新加入）
 - 喵喵 Miao-Plugin QQ 群：755269874（暂时停止新加入）
 - 闲聊群 342996701
+
+## 致谢
+
+- [xiaoyao-cvs-plugin](https://github.com/Ctrlcvs/xiaoyao-cvs-plugin) —— 原项目作者 [ctrlcvs](https://github.com/Ctrlcvs)
+- [xiaoyao-cvs-plugin](https://gitee.com/qsyhh/xiaoyao-cvs-plugin) / —— 热心二改作者 [@qsyhh](https://gitee.com/qsyhh)

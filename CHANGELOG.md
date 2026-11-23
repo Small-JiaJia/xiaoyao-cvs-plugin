@@ -1,3 +1,11 @@
+# 1.3.0
+* 修复米游社 stoken 升级 v2 格式后 `#扫码登录` 失败（`retcode:1002`）
+    * `exchange` 的 `src_token.token_type` 按 `v2_` 前缀自适应为 2
+    * 改用两次 `exchange` 分别换取 `cookie_token` 与 `ltoken`，不再走只认 v1 的 `getLTokenBySToken`
+    * 修复 `seachUid` 未同步 `this.cookie` 导致 `userGameInfo` 请求不带 Cookie
+    * 修复 `userGameInfo` 传入无 `biz` 的 `ForumData` 导致 `game_biz=undefined`
+    * `bindSkCK` 补写 `data/yaml/{qq}.yaml`，解决绑定成功但 `#体力` 仍提示未绑定 sk
+    * `saveBingStoken` 增加目录创建与写入异常处理
 # 1.2.9
 * 增加星穹铁道武器、角色图鉴
     * 指令`#于夜色中图鉴`
