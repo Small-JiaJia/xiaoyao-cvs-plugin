@@ -72,11 +72,63 @@ export async function bindSkCK(e, res) {
   e.ck = res?.cookie
   e.msg = res.cookie
   e.raw_message = res.cookie
+  // #体力 等 ji-plugin 功能直接读 data/yaml/{qq}.yaml 里的 sk，不读数据库，
+  // 这里补一份，避免 seachUid 因接口异常提前返回导致 yaml 缺失
+  await saveSkYaml(e, res)
   if (isV3) {
     let userck = (await import(`file://${_path}/plugins/genshin/model/user.js`)).default
     await (new userck(e)).bing()
   } else {
-    let { bingCookie } = await import(`file://${_path}/lib/app/dailyNote.js`)
+    let { bingCookie } = await import(`file://${_path}/lib/app/dayNote.js`).catch(() => import(`file://${_path}/lib/app/dailyNote.js`))
     await bingCookie(e)
+  }
+}
+
+/** 把扫码得到的 stoken 写入 xiaoyao 的 sk 存储（供 ji-plugin 的 CK.get 读取） */
+async function saveSkYaml(e, res) {
+  try {
+    const gsCfg = (await import("../model/gsCfg.js")).default
+    const user = new (await import("../model/user.js")).default(e)
+    const sk = await utils.getCookieMap(res?.stoken || "")
+    const ckMap = await utils.getCookieMap(res?.cookie || "")
+    const stuid = sk?.get("stuid") || ckMap?.get("ltuid")
+    if (!stuid) {
+      Bot.logger.error("[扫码登录] stoken 中缺少 stuid，无法写入 sk 存储")
+      return
+    }
+    // 复用 seachUid 的查询结果：直接查两个游戏的角色列表
+    const list = []
+    for (const game of [ "崩坏星穹铁道", "原神" ]) {
+      const board = await user.getBoard(game)
+      if (!board) continue
+      user.cookie = res?.cookie || user.cookie
+      const r = await user.getData("userGameInfo", board, false)
+      if (r?.retcode === 0) list.push(...(r?.data?.list || []))
+    }
+    if (!list.length) {
+      Bot.logger.warn("[扫码登录] 未查到角色，跳过 sk 写入")
+      return
+    }
+    const allData = {}
+    for (const s of list) {
+      const uid = String(s.game_uid || "")
+      if (!gsCfg.isValidUid(uid)) continue
+      allData[uid] = {
+        stuid,
+        stoken: sk?.get("stoken"),
+        // ltoken 从 cookie 串里取（exchange 换出来的真实 ltoken）
+        ltoken: ckMap?.get("ltoken") || sk?.get("ltoken"),
+        mid: sk?.get("mid"),
+        uid,
+        userId: e.user_id,
+        is_sign: true,
+        region_name: s.region_name,
+        region: s.region
+      }
+    }
+    await gsCfg.saveBingStoken(e.user_id, allData)
+    Bot.logger.mark(`[扫码登录] sk 写入完成 qq:${e.user_id} 角色数:${Object.keys(allData).length}`)
+  } catch (err) {
+    Bot.logger.error(`[扫码登录] 写入 sk 存储异常：${err.message}`)
   }
 }

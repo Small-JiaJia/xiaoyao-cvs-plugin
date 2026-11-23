@@ -175,9 +175,17 @@ class GsCfg {
   }
 
   saveBingStoken(userId, data) {
-    let file = `./plugins/${plugin}/data/yaml/${userId}.yaml`
+    const dir = `./plugins/${plugin}/data/yaml/`
+    let file = `${dir}${userId}.yaml`
     if (lodash.isEmpty(data)) {
       fs.existsSync(file) && fs.unlinkSync(file)
+      return
+    }
+    // 目录不存在时先创建，否则 writeFileSync 会直接抛异常导致整个绑定流程中断
+    try {
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+    } catch (error) {
+      Bot.logger.error(`[stoken保存] 创建目录失败 ${dir}：${error.message}`)
       return
     }
     // 过滤掉非法uid，避免写入 undefined / [object Object] / "1" 这类脏数据
@@ -208,8 +216,13 @@ class GsCfg {
     Object.assign(ck, clean)
     // 先写临时文件再重命名，避免中断产生半截文件
     let tmp = `${file}.tmp`
-    fs.writeFileSync(tmp, YAML.stringify(ck), "utf8")
-    fs.renameSync(tmp, file)
+    try {
+      fs.writeFileSync(tmp, YAML.stringify(ck), "utf8")
+      fs.renameSync(tmp, file)
+      Bot.logger.mark(`[stoken保存] 已写入 ${file}`)
+    } catch (error) {
+      Bot.logger.error(`[stoken保存] 写入 ${file} 失败：${error.message}`)
+    }
   }
 }
 
