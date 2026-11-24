@@ -79,7 +79,7 @@ export async function bindSkCK(e, res) {
     let userck = (await import(`file://${_path}/plugins/genshin/model/user.js`)).default
     await (new userck(e)).bing()
   } else {
-    let { bingCookie } = await import(`file://${_path}/lib/app/dayNote.js`).catch(() => import(`file://${_path}/lib/app/dailyNote.js`))
+    let { bingCookie } = await import(`file://${_path}/lib/app/dailyNote.js`)
     await bingCookie(e)
   }
 }
@@ -88,7 +88,9 @@ export async function bindSkCK(e, res) {
 async function saveSkYaml(e, res) {
   try {
     const gsCfg = (await import("../model/gsCfg.js")).default
-    const user = new (await import("../model/user.js")).default(e)
+    const UserModel = (await import("../model/user.js")).default
+    const { BIND_GAMES } = await import("../model/user.js")
+    const user = new UserModel(e)
     const sk = await utils.getCookieMap(res?.stoken || "")
     const ckMap = await utils.getCookieMap(res?.cookie || "")
     const stuid = sk?.get("stuid") || ckMap?.get("ltuid")
@@ -96,11 +98,14 @@ async function saveSkYaml(e, res) {
       Bot.logger.error("[扫码登录] stoken 中缺少 stuid，无法写入 sk 存储")
       return
     }
-    // 复用 seachUid 的查询结果：直接查两个游戏的角色列表
+    // 复用 seachUid 的查询结果：直接查各游戏的角色列表
     const list = []
-    for (const game of [ "崩坏星穹铁道", "原神" ]) {
+    for (const game of BIND_GAMES) {
       const board = await user.getBoard(game)
-      if (!board) continue
+      if (!board) {
+        Bot.logger.warn(`[扫码登录] mys.boards 中未找到「${game}」板块，跳过`)
+        continue
+      }
       user.cookie = res?.cookie || user.cookie
       const r = await user.getData("userGameInfo", board, false)
       if (r?.retcode === 0) list.push(...(r?.data?.list || []))

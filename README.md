@@ -24,6 +24,18 @@ yunzai-bot 扩展插件，提供米游社签到、米游币、体力查询等功
 | 换 ltoken | `getLTokenBySToken` | 同上，另有成对方法 `getLTokenBySTokenV1` 可佐证 v1/v2 分离 |
 | ltoken 取值 | `ltoken=${token}` 直接把 stoken 当 ltoken | v1 时代碰巧可用，v2 下彻底不可用 |
 
+### 扩展：米哈游出新游戏怎么适配
+
+扫码登录本身**不需要任何改动**——`createQRLogin` / `queryQRLoginStatus` / `exchange` 拿的都是
+米游社通行证**账号级**凭据（aid / mid / stoken），与具体游戏无关。
+
+需要改的只有「查角色列表」这一步，因为它要传每个游戏各自的 `game_biz`：
+
+| 游戏 | biz |
+| --- | --- |
+| 原神 | `hk4e_cn`（国际服 `hk4e_global`） |
+| 崩坏星穹铁道 | `hkrpg_cn`（国际服 `hkrpg_global`） |
+| 绝区零 | `nap_cn`（国际服 `nap_global`） |
 
 ## 功能特性
 
@@ -53,11 +65,13 @@ git clone https://github.com/Small-JiaJia/xiaoyao-cvs-plugin.git ./plugins/xiaoy
 2. 发送 `#逍遥设置` 获取管理面板
 3. 发送 `#逍遥版本` 获取更新日志
 4. 发送 `#逍遥插件更新` 获取最新代码
-5. 发送 `#体力` 查询当前米游社体力
-6. 发送 `#崩坏3签到` 可签到崩坏3游戏模块，具体支持【崩坏3、原神、崩坏2、未定义事件】
-7. 发送 `#云原神签到` 可签到云原神游戏
-8. 支持 stoken 绑定以及相关的操作，如 `#更新抽卡记录`
-9. 默认配置文件位于 `./plugins/xiaoyao-cvs-plugin/defSet/config/config.yaml`
+5. 发送 `#扫码登录` 扫码绑定米游社账号（获取 sk 与 ck，群聊/私聊均可，取决于配置）
+6. 发送 `#体力` 查询当前米游社体力
+7. 发送 `#刷新ck` 刷新失效的 cookie
+8. 发送 `#崩坏3签到` 可签到崩坏3游戏模块，具体支持【崩坏3、原神、崩坏2、未定义事件】
+9. 发送 `#云原神签到` 可签到云原神游戏
+10. 支持 stoken 绑定以及相关的操作，如 `#更新抽卡记录`
+11. 默认配置文件位于 `./plugins/xiaoyao-cvs-plugin/defSet/config/config.yaml`
 
 ## 后续计划
 
@@ -79,5 +93,5 @@ git clone https://github.com/Small-JiaJia/xiaoyao-cvs-plugin.git ./plugins/xiaoy
 
 ## 致谢
 
-- [xiaoyao-cvs-plugin](https://github.com/Ctrlcvs/xiaoyao-cvs-plugin) —— 原项目作者 [ctrlcvs](https://github.com/Ctrlcvs)
-- [xiaoyao-cvs-plugin](https://gitee.com/qsyhh/xiaoyao-cvs-plugin) / —— 热心二改作者 [@qsyhh](https://gitee.com/qsyhh)
+| [xiaoyao-cvs-plugin](https://github.com/Ctrlcvs/xiaoyao-cvs-plugin) | 原项目作者 [@ctrlcvs](https://github.com/Ctrlcvs)| 
+| [xiaoyao-cvs-plugin](https://gitee.com/qsyhh/xiaoyao-cvs-plugin) | 热心二改作者 [@qsyhh](https://gitee.com/qsyhh)| 

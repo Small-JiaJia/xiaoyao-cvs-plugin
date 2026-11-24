@@ -1,11 +1,19 @@
+# 1.3.1
+* 新增 `BIND_GAMES` 常量，统一管理扫码绑定时查询的游戏列表
+    * 修复 `#扫码登录` 漏查绝区零角色的问题
+    * `model/user.js` 与 `apps/mhyTopUpLogin.js` 共用同一份配置，新增游戏只改一处
+    * 游戏名在 `mys.boards` 中找不到时跳过并记录警告，不中断绑定
 # 1.3.0
 * 修复米游社 stoken 升级 v2 格式后 `#扫码登录` 失败（`retcode:1002`）
     * `exchange` 的 `src_token.token_type` 按 `v2_` 前缀自适应为 2
     * 改用两次 `exchange` 分别换取 `cookie_token` 与 `ltoken`，不再走只认 v1 的 `getLTokenBySToken`
     * 修复 `seachUid` 未同步 `this.cookie` 导致 `userGameInfo` 请求不带 Cookie
     * 修复 `userGameInfo` 传入无 `biz` 的 `ForumData` 导致 `game_biz=undefined`
+    * 新增 `getBoard(name)`，从 `mys.boards` 取含 `biz` 的板块定义
     * `bindSkCK` 补写 `data/yaml/{qq}.yaml`，解决绑定成功但 `#体力` 仍提示未绑定 sk
-    * `saveBingStoken` 增加目录创建与写入异常处理
+    * `getLtoken` 改为 GET + Cookie 头，不再把凭据拼进 query
+    * `saveBingStoken` 增加目录创建与写入异常处理，写入结果记入日志
+    * 角色列表改为收集后一次性保存，避免循环内反复读写同一 yaml
 # 1.2.9
 * 增加星穹铁道武器、角色图鉴
     * 指令`#于夜色中图鉴`
