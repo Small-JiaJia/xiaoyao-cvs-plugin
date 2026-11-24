@@ -16,6 +16,16 @@ import moment from 'moment'
 const _path = process.cwd();
 const plugin = "xiaoyao-cvs-plugin"
 const nameData = ["原神", "崩坏3", "崩坏2", "未定事件簿"];
+
+/**
+ * 扫码登录 / stoken 绑定时需要查询角色列表的游戏。
+ * 新增游戏只需两步：
+ *   1. 在 model/mys/mysTool.js 的 boards 里添加板块定义（必须带 name 和 biz）
+ *   2. 把游戏名（即 boards 中的 name 字段值，不是 key）加到此数组
+ * 未在 mys.boards 中找到对应板块的游戏会被跳过并记录日志，不会中断绑定。
+ */
+export const BIND_GAMES = [ "绝区零", "崩坏星穹铁道", "原神" ];
+
 const yamlDataUrl = `${_path}/plugins/xiaoyao-cvs-plugin/data/yaml`;
 const cloudDataUrl = `${_path}/plugins/xiaoyao-cvs-plugin/data/yunToken/`
 let bbsTask = false;
@@ -857,7 +867,8 @@ export default class user {
                 this.cookie = this.e.cookie
             }
             let list = []
-            for (let item of ['崩坏星穹铁道', '原神']) {
+            // 遍历 BIND_GAMES 中配置的游戏，逐个查询该账号下的角色
+            for (let item of BIND_GAMES) {
                 // 必须传 mys.boards 里的项（含 biz），ForumData 只有 id/forumId/name/url，
                 // 传给 getBody 会匹配失败导致 game_biz=undefined、接口返回空
                 const board = await this.getBoard(item)
