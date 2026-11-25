@@ -8,6 +8,8 @@
     * `seachUid` 在 `exchange` 偶发失败时仍用扫码得到的 stoken/stuid 继续，避免整段写入被跳过
     * `authKey` 的 Cookie 头改为 `this.cookies || this.cookie`，不再发送 `undefined`
     * `#更新抽卡记录` 失败提示改为引导重新 `#扫码绑定`，不再误导成「cookie 过期」
+    * `GetQrCode` / `UserPassLogin` 把首次 `exchange` 结果传给 `bindStoken` 复用
+      （同一个 stoken 二次 exchange 会返回 `-3001 参数不合法`，此前靠兜底才没中断绑定）
 # 1.3.2
 * 修复 `#删除stoken` 只删 yaml、不删数据库的问题
     * 现象：删除后提示成功，但 `#签到` 仍能用旧凭据，`#体力` 却提示未绑定

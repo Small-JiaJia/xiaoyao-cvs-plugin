@@ -262,7 +262,9 @@ export async function bindStoken(e, uid = '') {
 	e.region = getServer(e.uid)
 	e.cks = msg.replace(/;/g, '&').replace(/stuid/, "uid")
 	e.sk = await utils.getCookieMap(msg)
-	let res = await user.getData("exchange", { token: e.sk?.get('stoken'), mid: e.sk?.get('mid') }, false)
+	// 扫码流程在 GetQrCode 里已经 exchange 过，同一个 stoken 再换一次会返回 -3001（token 已消费），
+	// 有缓存就复用；手动发送 stoken 绑定时 e.exData 为空，照常请求
+	let res = e.exData || await user.getData("exchange", { token: e.sk?.get('stoken'), mid: e.sk?.get('mid') }, false)
 	/* if (!res?.data) {
 		e.uid = "64"
 		e.region = getServer(e.uid)

@@ -89,7 +89,10 @@ export default class mysTopLogin {
         let stoken =`stoken=${token};stuid=${uid};mid=${mid}`
         return {
             cookie: `ltoken=${ltoken || ''};ltuid=${uid};cookie_token=${cookieToken};account_id=${uid};`,
-            stoken
+            stoken,
+            // 同一个 stoken 二次 exchange 会返回 -3001（token 已被消费），
+            // 把首次结果带出去给 bindStoken 复用
+            exchange: UserData
         }
     }
 
@@ -153,7 +156,9 @@ export default class mysTopLogin {
             Bot.logger.mark(`[米哈游登录] ck 换取完成 aid:${aid} tokenType:${tokenType}`)
             return {
                 cookie: `ltoken=${ltoken || ''};ltuid=${aid};cookie_token=${cookieToken};account_id=${aid};`,
-                stoken: `${cookies.replace('&', ';')};stuid=${aid};`
+                stoken: `${cookies.replace('&', ';')};stuid=${aid};`,
+                // 同扫码流程：stoken 只能 exchange 一次，把结果带出去复用
+                exchange: ckRes
             }
         } else {
             await this.e.reply(`错误：${JSON.stringify(res)}`, true)

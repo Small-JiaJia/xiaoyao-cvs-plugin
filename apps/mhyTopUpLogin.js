@@ -76,6 +76,8 @@ export async function bindSkCK(e, res) {
   // sign 类接口（userGameInfo 等）读的是 e.cookie，提前设好，
   // 即使 bindStoken 里的 exchange 异常，后续查角色也有 Cookie 可用
   e.cookie = res?.cookie
+  // 扫码时已经 exchange 过一次，复用结果，避免二次 exchange 触发 -3001
+  e.exData = res?.exchange
   await bindStoken(e, "1")
   e.ck = res?.cookie
   e.cookie = res?.cookie
