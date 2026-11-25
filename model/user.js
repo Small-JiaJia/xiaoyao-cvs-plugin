@@ -848,9 +848,13 @@ export default class user {
                     v2Sk = await this.getData('getByStokenV2', { headers: { Cookie: this.e.raw_message } }, false)
                 }
                 const stuidVal = this.e.sk?.get('stuid') || respAid
-                const ltVal = skLtoken || ltoken || dstToken
+                // ltoken 严格取真实 ltoken，不再回退到 dstToken（那是 cookie_token，语义不同）
+                const ltVal = skLtoken || ltoken
+                if (!ltVal) {
+                    Bot.logger.warn(`[stoken绑定] 未取到 ltoken，ck 中该项留空 qq:${this.e.user_id}`)
+                }
                 this.e.cookie =
-                    `ltoken=${ltVal};ltuid=${stuidVal};cookie_token=${dstToken}; account_id=${stuidVal};`
+                    `ltoken=${ltVal || ''};ltuid=${stuidVal};cookie_token=${dstToken}; account_id=${stuidVal};`
                 // if(this.e.sk?.get('mid')){
                 // 	this.e.cookie =
                 // 		`ltoken_v2=${this.e.sk?.get('ltoken')||ltoken};cookie_token_v2=${data.data.cookie_token}; account_mid_v2=${this.e.sk.get('mid')};ltmid_v2=${this.e.sk.get('mid')}`
@@ -901,7 +905,8 @@ export default class user {
                 allData[uid] = {
                     stuid: this.e?.sk?.get('stuid') || this.e.stuid || respAid,
                     stoken: this.e?.sk?.get('stoken') || v2Sk?.data?.token?.token || data?.data?.list?.[0]?.token,
-                    ltoken: this.e?.sk?.get('ltoken') || ltoken || dstToken,
+                    // 严格取真实 ltoken，不回退到 dstToken（那是 cookie_token）
+                    ltoken: this.e?.sk?.get('ltoken') || ltoken || '',
                     mid: this.e?.sk?.get('mid') || v2Sk?.data?.user_info?.mid || respMid,
                     uid: uid,
                     userId: this.e.user_id,
@@ -936,26 +941,33 @@ export default class user {
             }
             let ck = fs.readFileSync(file, 'utf-8')
             ck = YAML.parse(ck)
+            const done = () => e.reply(`已删除${/米游社|mys|米币|米游币|sk|stoken/.test(e.msg) ? 'stoken' : '云原神token'}`)
             if (ck?.yuntoken) {
                 fs.unlinkSync(file);
             } else if (ck) {
+                // 未指定 uid 时直接清空整个文件的绑定，避免必须带 uid 才能删除
+                if (!e.uid) {
+                    fs.unlinkSync(file);
+                    done()
+                    return true;
+                }
                 if (!ck[e.uid]) {
                     return true;
                 }
-                let sk=ck[e.uid]
-                lodash.forEach(ck,(v,i)=>{
-                    if(sk?.stoken===v?.stoken){
+                let sk = ck[e.uid]
+                // 同一通行证（stoken 相同）下的多个角色一起删
+                lodash.forEach(ck, (v, i) => {
+                    if (sk?.stoken === v?.stoken) {
                         delete ck[i];
                     }
                 })
-                if (Object.keys(ck) == 0) {
+                if (Object.keys(ck).length === 0) {
                     fs.unlinkSync(file);
                 } else {
-                    ck = YAML.stringify(ck)
-                    fs.writeFileSync(file, ck, 'utf8')
+                    fs.writeFileSync(file, YAML.stringify(ck), 'utf8')
                 }
             }
-            e.reply(`已删除${/米游社|mys|米币|米游币|sk|stoken/.test(e.msg)?'stoken':'云原神token'}`)
+            done()
             return true;
         })
     }

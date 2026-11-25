@@ -67,26 +67,28 @@ export default class mysTopLogin {
         }
         // 扫码拿到的 token 是 v2 格式（v2_ 前缀），exchange 的 token_type 需按 2 传，否则返回 -3001
         const tokenType = Number(stokenItem?.token_type) || (String(token).startsWith("v2_") ? 2 : 1)
-        // dst_token_type=4 换 cookie_token
+
+        // 主接口：exchange（dst_token_type=4 换 cookie_token）
         let UserData = await this.user.getData("exchange", { token, mid, tokenType, dstTokenType: 4 }, false)
-        const cookieToken = UserData?.data?.token?.token || UserData?.data?.cookie_token
-        if (UserData?.retcode !== 0 || !cookieToken) {
+        let cookieToken = UserData?.data?.token?.token || UserData?.data?.cookie_token
+        if (!cookieToken) {
+            // 注意：不要回退到 bbsGetCookie，该接口只接受 v1 stoken，v2 token 必然返回 1002
             Bot.logger.error(`[扫码登录] exchange 换取 cookie_token 失败 retcode:${UserData?.retcode}(${UserData?.message || ""}) tokenType:${tokenType} mid:${mid}`)
             await this.e.reply(`换取cookie_token失败：${UserData?.message || "接口返回为空"}`, true)
             return false
         }
+
         // ltoken 同样通过 exchange 换取（dst_token_type=2）。
         // 不能用 getLTokenBySToken：该接口只接受 v1 stoken，v2_ token 会固定返回 1002
-        let ltoken
         const ltRes = await this.user.getData("exchange", { token, mid, tokenType, dstTokenType: 2 }, false)
-        ltoken = ltRes?.data?.token?.token || ltRes?.data?.ltoken
+        const ltoken = ltRes?.data?.token?.token || ltRes?.data?.ltoken
         if (!ltoken) {
-            Bot.logger.warn(`[扫码登录] exchange 换取 ltoken 失败 retcode:${ltRes?.retcode}(${ltRes?.message || ""})，暂用 cookie_token 占位`)
-            ltoken = cookieToken
+            // 不再用 cookie_token 顶替：两者语义不同，填错会让后续按 ltoken 处理的逻辑出错
+            Bot.logger.warn(`[扫码登录] exchange 换取 ltoken 失败 retcode:${ltRes?.retcode}(${ltRes?.message || ""})，ltoken 将留空`)
         }
         let stoken =`stoken=${token};stuid=${uid};mid=${mid}`
         return {
-            cookie: `ltoken=${ltoken};ltuid=${uid};cookie_token=${cookieToken};account_id=${uid};`,
+            cookie: `ltoken=${ltoken || ''};ltuid=${uid};cookie_token=${cookieToken};account_id=${uid};`,
             stoken
         }
     }
@@ -130,13 +132,28 @@ export default class mysTopLogin {
             Bot.logger.mark(`[米哈游登录] ${Bot.logger.mark(JSON.stringify(res))}`)
         }
         if (res.retcode == 0) {
-            let cookies = `stoken=${res.data.token.token}&mid=${res.data.user_info.mid}`
-            let cookie_token = await this.user.getData("bbsGetCookie", { cookies })
-            let ltoken = await this.user.getData('getLtoken', { cookies: `${cookies}` }, false)
-            Bot.logger.mark(`[米哈游登录] ${Bot.logger.mark(JSON.stringify(cookie_token))}`)
+            const token = res.data.token.token
+            const mid = res.data.user_info.mid
+            const aid = res.data.user_info.aid
+            const cookies = `stoken=${token}&mid=${mid}`
+            // 与扫码登录一致：loginByPassword 返回的同样是 v2 token，
+            // bbsGetCookie / getLTokenBySToken 只认 v1，必须改走 exchange
+            const tokenType = String(token || "").startsWith("v2_") ? 2 : 1
+            const ckRes = await this.user.getData("exchange", { token, mid, tokenType, dstTokenType: 4 }, false)
+            const cookieToken = ckRes?.data?.token?.token || ckRes?.data?.cookie_token
+            if (!cookieToken) {
+                await this.e.reply(`密码登录换取cookie_token失败：${ckRes?.message || "接口返回为空"}`, true)
+                return false
+            }
+            const ltRes = await this.user.getData("exchange", { token, mid, tokenType, dstTokenType: 2 }, false)
+            const ltoken = ltRes?.data?.token?.token || ltRes?.data?.ltoken
+            if (!ltoken) {
+                Bot.logger.warn(`[米哈游登录] exchange 换取 ltoken 失败 retcode:${ltRes?.retcode}(${ltRes?.message || ""})，ltoken 将留空`)
+            }
+            Bot.logger.mark(`[米哈游登录] ck 换取完成 aid:${aid} tokenType:${tokenType}`)
             return {
-                cookie: `ltoken=${ltoken?.data?.ltoken};ltuid=${res.data.user_info.aid};cookie_token=${cookie_token?.data?.cookie_token};`,
-                stoken: `${cookies.replace('&', ';')};stuid=${res.data.user_info.aid};`
+                cookie: `ltoken=${ltoken || ''};ltuid=${aid};cookie_token=${cookieToken};account_id=${aid};`,
+                stoken: `${cookies.replace('&', ';')};stuid=${aid};`
             }
         } else {
             await this.e.reply(`错误：${JSON.stringify(res)}`, true)

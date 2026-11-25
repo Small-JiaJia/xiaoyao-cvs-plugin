@@ -1,3 +1,16 @@
+# 1.3.2
+* 修复 `#删除stoken` 只删 yaml、不删数据库的问题
+    * 现象：删除后提示成功，但 `#签到` 仍能用旧凭据，`#体力` 却提示未绑定
+    * 原因：`delSytk` 只操作 `data/yaml`，`data/db` 里 genshin 的 CK 未被清理
+    * 现在先读出 ltuid → 删 yaml → 调用 `NoteUser.delMysUser()` 同步清理数据库
+    * 修复 `delSytk` 中 `Object.keys(ck) == 0` 恒为 false，导致删空后残留空文件
+    * 修复未指定 uid 时无法删除（原先必须 `ck[e.uid]` 存在才会继续）
+* ltoken 严格取值，不再用 `cookie_token` 顶替
+    * `seachUid` 与 `GetQrCode` 中 `ltoken` 只取真实 ltoken 值
+    * 换取失败时留空并记录警告，避免语义混淆
+* `#刷新ck` 修复与清理
+    * 修复 `res` 为 `false` 时读 `res.message` 抛 `TypeError`
+    * 移除未被使用的 `cookies` / `data` 死代码
 # 1.3.1
 * 新增 `BIND_GAMES` 常量，统一管理扫码绑定时查询的游戏列表
     * 修复 `#扫码登录` 漏查绝区零角色的问题
