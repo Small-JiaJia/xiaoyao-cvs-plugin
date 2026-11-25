@@ -766,8 +766,10 @@ export default class user {
         if (!uid) {
             uid = e.runtime?.user?._regUid
         }
-        this.e.uid = uid;
-        this.e.cookie = cookie;
+        // 只在本函数真的读到值时才覆盖：扫码绑定流程里 e.cookie 是刚由接口写入的，
+        // 这里若用 undefined 覆盖会让后续 userGameInfo 请求不带 Cookie，直接查不到角色
+        if (uid) this.e.uid = uid;
+        if (cookie) this.e.cookie = cookie;
         return {
             cookie,
             uid,
@@ -826,7 +828,13 @@ export default class user {
 
     async seachUid(data) {
         let ltoken = '', v2Sk;
-        if (data?.data) {
+        // 扫码流程里 stoken/stuid/mid 是可靠的，即使 exchange 偶发失败也应继续，
+        // 否则会跳过整个写入流程，导致 data/yaml 里没有 sk（#体力/#更新抽卡记录 全废）
+        const skStuid = this.e?.sk?.get?.('stuid')
+        if (!data?.data && skStuid) {
+            Bot.logger.warn(`[stoken绑定] exchange 未返回有效数据 retcode:${data?.retcode ?? "-"}(${data?.message || "接口无响应"})，改用扫码得到的 stoken 继续`)
+        }
+        if (data?.data || skStuid) {
             // exchange 返回 {token:{token,token_type}, user_info:{mid,aid}}，
             // getLtoken/getMultiTokenByLoginTicket 返回 {ltoken} 或 {list:[...]}，这里统一取值避免 undefined 崩溃
             const dstToken = data?.data?.token?.token || data?.data?.ltoken || data?.data?.list?.[1]?.token
@@ -853,8 +861,12 @@ export default class user {
                 if (!ltVal) {
                     Bot.logger.warn(`[stoken绑定] 未取到 ltoken，ck 中该项留空 qq:${this.e.user_id}`)
                 }
-                this.e.cookie =
-                    `ltoken=${ltVal || ''};ltuid=${stuidVal};cookie_token=${dstToken}; account_id=${stuidVal};`
+                // 只有拿到 cookie_token 时才用本流程的 ck 覆盖，
+                // 否则保留上游（扫码流程）已经设置好的完整 cookie
+                if (dstToken) {
+                    this.e.cookie =
+                        `ltoken=${ltVal || ''};ltuid=${stuidVal};cookie_token=${dstToken}; account_id=${stuidVal};`
+                }
                 // if(this.e.sk?.get('mid')){
                 // 	this.e.cookie =
                 // 		`ltoken_v2=${this.e.sk?.get('ltoken')||ltoken};cookie_token_v2=${data.data.cookie_token}; account_mid_v2=${this.e.sk.get('mid')};ltmid_v2=${this.e.sk.get('mid')}`

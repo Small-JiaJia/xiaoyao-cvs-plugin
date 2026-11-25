@@ -192,7 +192,13 @@ async function getAuthKey(e, user,data={
 	e.region = getServer(e.uid)
 	let authkeyrow = await user.getData("authKey", data);
 	if (!authkeyrow?.data) {
-		e.reply(`uid:${e.uid},authkey获取失败：` + (authkeyrow.message.includes("登录失效") ? "请重新绑定stoken" : authkeyrow.message))
+		const msg = String(authkeyrow?.message || "接口无响应")
+		// genAuthKey 只认 stoken 会话，ck（cookie_token）取不到 authkey；
+		// 文案直接引导重新扫码，避免用户以为只是 cookie 过期反复 #刷新ck
+		const tip = /登录状态失效|登录失效|stoken/i.test(msg)
+			? "未取到有效 stoken，请重新【#扫码绑定】后再试"
+			: msg
+		e.reply(`uid:${e.uid},authkey获取失败：${tip}`)
 		return false;
 	}
 	return authkeyrow.data["authkey"];

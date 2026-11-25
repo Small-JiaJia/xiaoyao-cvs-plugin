@@ -447,7 +447,9 @@ export default class miHoYoApi {
 					'x-rpc-client_type': '5',
 					Referer: 'https://app.mihoyo.com',
 					Origin: 'https://webstatic.mihoyo.com',
-					Cookie: this.cookies,
+					// genAuthKey 需要 stoken(+mid) 会话；yaml 里没有 stoken 时退回 ck，
+					// 避免 Cookie 头是 undefined 导致固定的 -100「登录状态失效」
+					Cookie: this.cookies || this.cookie,
 					DS: this.getDs(this.isOs ? mys.osSalt : mys.saltWeb),
 					'x-rpc-sys_version': '12',
 					'x-rpc-channel': 'mihoyo',
