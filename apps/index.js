@@ -7,7 +7,7 @@ import { Note, DailyNoteTask, Note_appoint, noteTask, pokeNote } from "./Note.js
 import { rule as adminRule, sysCfg, updateTemp, updateMiaoPlugin } from "./admin.js"
 import { rule as userRule, delSign, updCookie, userInfo, gclog, mytoken, gcPaylog, bindStoken, bindLogin_ticket, cloudToken } from "./user.js"
 import { rule as signRule, sign, bbsSign, cloudSign, seach, cookiesDocHelp, signTask } from "./sign.js"
-import { rule as topupLoginRule, qrCodeLogin, UserPassMsg, UserPassLogin } from "./mhyTopUpLogin.js"
+import { rule as topupLoginRule, qrCodeLogin, UserPassMsg } from "./mhyTopUpLogin.js"
 
 export {
   updateTemp,
@@ -20,7 +20,6 @@ export {
   bindLogin_ticket,
   bbsSign,
   UserPassMsg,
-  UserPassLogin,
   gclog,
   mytoken,
   bindStoken,
