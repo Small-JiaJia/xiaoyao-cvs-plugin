@@ -69,15 +69,23 @@ export async function bindSkCK(e, res) {
   // 这里把 ltoken 合并进 sk，否则 seachUid / saveSkYaml 取不到，#体力 会缺 ltoken。
   const ckMap = await utils.getCookieMap(res?.cookie || "")
   const ltoken = ckMap.get("ltoken") || ""
+  if (!ltoken) {
+    // 没有 ltoken，userGameInfo / 签到 / 体力 都会以 -100 失败，必须让它显眼
+    Bot.logger.error(`[扫码登录] exchange 未换到 ltoken，本次 ck 缺少关键字段 qq:${e.user_id}`)
+  }
   const skStr = ltoken ? `${res?.stoken};ltoken=${ltoken}` : res?.stoken
   e.msg = skStr
   e.raw_message = skStr
   e.isPrivate = true
   // sign 类接口（userGameInfo 等）读的是 e.cookie，提前设好，
   // 即使 bindStoken 里的 exchange 异常，后续查角色也有 Cookie 可用
+  e.ck = res?.cookie
   e.cookie = res?.cookie
   // 扫码时已经 exchange 过一次，复用结果，避免二次 exchange 触发 -3001
   e.exData = res?.exchange
+  // 角色查询失败的提示延迟到 saveSkYaml 之后统一给，避免「提示绑定失败、其实已写入」
+  e.quietBind = true
+  e.bindDone = false
   await bindStoken(e, "1")
   e.ck = res?.cookie
   e.cookie = res?.cookie
@@ -93,7 +101,17 @@ export async function bindSkCK(e, res) {
   // #体力 等 ji-plugin 功能直接读 data/yaml/{qq}.yaml 里的 sk，不读数据库。
   // 放在 bing 之后：此时数据库里已有角色 uid，接口查询失败时可以兜底，
   // 避免出现「绑定成功但 sk 没写入」导致 #更新抽卡记录 / #体力 全部失效。
-  await saveSkYaml(e, res)
+  const saved = await saveSkYaml(e, res)
+  if (!e.bindDone) {
+    if (saved > 0) {
+      // 角色接口刚才异常（多为刚 exchange 完的短暂 -100），但 sk 已按数据库记录落盘，
+      // 功能是可用的，不能再说「绑定失败」
+      Bot.logger.mark(`[扫码登录] 角色接口异常，已按数据库记录补写 sk qq:${e.user_id} 角色数:${saved}`)
+      await e.reply(`stoken 已保存（角色接口暂时无响应，已按已有角色记录写入）\n共 ${saved} 个角色，可直接使用【#体力】【#更新抽卡记录】`)
+    } else {
+      await e.reply("未查询到游戏角色，绑定失败。请确认账号下已有角色后重新扫码~")
+    }
+  }
 }
 
 /** 把扫码得到的 stoken 写入 xiaoyao 的 sk 存储（供 ji-plugin 的 CK.get 读取） */
@@ -108,10 +126,15 @@ async function saveSkYaml(e, res) {
     const stuid = sk?.get("stuid") || ckMap?.get("ltuid")
     if (!stuid) {
       Bot.logger.error("[扫码登录] stoken 中缺少 stuid，无法写入 sk 存储")
-      return
+      return 0
     }
-    // userGameInfo 读的是 e.cookie，绑定流程里可能被 getCookie 清空，这里再兜一次
-    if (!e.cookie) e.cookie = res?.cookie
+    // 角色查询读 e.cookie：优先用本次扫码换出来的 ck（含 ltoken），
+    // 它比数据库里的旧 ck 可靠；只有它缺 ltoken 时才保留现有值
+    if (ckMap?.get("ltoken")) {
+      e.cookie = res.cookie
+    } else if (!e.cookie) {
+      e.cookie = res?.cookie
+    }
     // 复用 seachUid 的查询结果：直接查各游戏的角色列表
     const list = []
     for (const game of BIND_GAMES) {
@@ -148,7 +171,11 @@ async function saveSkYaml(e, res) {
     }
     if (!list.length) {
       Bot.logger.warn("[扫码登录] 未查到角色，跳过 sk 写入")
-      return
+      return 0
+    }
+    const lt = ckMap?.get("ltoken") || sk?.get("ltoken") || ""
+    if (!lt) {
+      Bot.logger.error("[扫码登录] 写入的 sk 缺少 ltoken，#体力/#签到 会失败，请让用户重新扫码")
     }
     const allData = {}
     for (const s of list) {
@@ -158,7 +185,7 @@ async function saveSkYaml(e, res) {
         stuid,
         stoken: sk?.get("stoken"),
         // ltoken 从 cookie 串里取（exchange 换出来的真实 ltoken）
-        ltoken: ckMap?.get("ltoken") || sk?.get("ltoken") || "",
+        ltoken: lt,
         mid: sk?.get("mid"),
         uid,
         userId: e.user_id,
@@ -169,7 +196,9 @@ async function saveSkYaml(e, res) {
     }
     await gsCfg.saveBingStoken(e.user_id, allData)
     Bot.logger.mark(`[扫码登录] sk 写入完成 qq:${e.user_id} 角色数:${Object.keys(allData).length}`)
+    return Object.keys(allData).length
   } catch (err) {
     Bot.logger.error(`[扫码登录] 写入 sk 存储异常：${err.message}`)
+    return 0
   }
 }

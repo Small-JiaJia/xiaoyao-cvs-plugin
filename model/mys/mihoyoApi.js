@@ -45,8 +45,11 @@ export default class miHoYoApi {
 				}
 			}
 			// //初始化配置文件
+			// getStoken 在 yaml 里找不到对应 uid 时返回的是 {}（空对象，真值），
+			// 用 if (data) 判断会拼出 stuid=undefined;stoken=undefined;ltoken=undefined;
+			// 这种假 cookie，导致 authKey 等读 this.cookies 的接口固定返回 -100
 			let data = this.getStoken(this.e.user_id);
-			if (data) {
+			if (data?.stoken) {
 				this.cookies = `stuid=${data.stuid};stoken=${data.stoken};ltoken=${data.ltoken};`;
 				if (data?.mid) {
 					this.cookies = `stuid=${data.stuid};stoken=${data.stoken};mid=${data.mid};`;
@@ -395,7 +398,7 @@ export default class miHoYoApi {
 					'x-rpc-client_type': '5',
 					'Content-Type': 'application/json;charset=UTF-8',
 					DS: this.getDs(),
-					'Cookie': this.cookie
+					'Cookie': this.cookie || this.cookies
 				}
 				if(board.key === "genshin"){
           header["x-rpc-signgame"]="hk4e"
@@ -449,7 +452,7 @@ export default class miHoYoApi {
 					Origin: 'https://webstatic.mihoyo.com',
 					// genAuthKey 需要 stoken(+mid) 会话；yaml 里没有 stoken 时退回 ck，
 					// 避免 Cookie 头是 undefined 导致固定的 -100「登录状态失效」
-					Cookie: this.cookies || this.cookie,
+					Cookie: this.cookies?.includes("stoken") ? this.cookies : this.cookie,
 					DS: this.getDs(this.isOs ? mys.osSalt : mys.saltWeb),
 					'x-rpc-sys_version': '12',
 					'x-rpc-channel': 'mihoyo',

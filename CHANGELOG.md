@@ -1,3 +1,20 @@
+# 1.3.4
+* 修复老用户重新扫码时「提示绑定失败，实际已写入」的矛盾
+    * 现象：`[stoken绑定] 查询原神角色失败 retcode:-100 ck:有` → 回复「未查询到游戏角色，绑定失败」，
+      随后又输出「绑定Cookie成功」，`data/yaml` 里也确实写进了 3 个角色
+    * 根因：该 QQ 之前绑过同一账号，`data.db` 里留着旧 ck；`bindStoken` 里的 `user.cookie(e)`
+      把刚扫码换出来的新 ck 覆盖成了已过期的旧 ck，三个游戏的 `userGameInfo` 全部 `-100`
+    * 修复：`bindStoken` 在 `user.cookie(e)` 之后用扫码得到的 `e.ck` 还原，新 ck 优先级高于数据库旧 ck
+    * `seachUid` 角色查询失败后延迟重试（0s / 2s / 4s），不再一次 `-100` 就判定失败
+    * 失败提示改由 `bindSkCK` 统一给出：只要 `saveSkYaml` 成功落盘就回复已保存，
+      并说明「角色接口暂时无响应，已按已有角色记录写入」
+    * 角色查询失败日志补充 `ltoken 有/空、长度、ltuid`，便于区分「没 ck」「ltoken 为空」「账号无角色」
+* 修复 `miHoYoApi` 构造出 `stuid=undefined;stoken=undefined;ltoken=undefined` 的假 cookie
+    * `getStoken()` 找不到对应 uid 时返回 `{}`（真值），`if (data)` 判断失效，仍拼出假 cookie
+    * 影响 `authKey`（`Cookie: this.cookies || this.cookie`）：刚扫码、yaml 还没写入时，
+      `#更新抽卡记录` 固定报「未取到有效 stoken」
+    * 改为 `if (data?.stoken)`；`authKey` 仅在 `this.cookies` 含 `stoken` 时才用它，否则退回 ck
+    * `authKey` 失败文案区分「本地没有该 uid 的 stoken」与「stoken 已失效」，并记录 `retcode`
 # 1.3.3
 * 修复 `#更新抽卡记录` 报「authkey获取失败：登录状态失效」
     * 根因：`saveSkYaml` 里给 `user.cookie` 赋值对 `miHoYoApi` 无效（它读 `e.cookie`），
