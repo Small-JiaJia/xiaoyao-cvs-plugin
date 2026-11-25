@@ -193,11 +193,16 @@ async function getAuthKey(e, user,data={
 	let authkeyrow = await user.getData("authKey", data);
 	if (!authkeyrow?.data) {
 		const msg = String(authkeyrow?.message || "接口无响应")
-		// genAuthKey 只认 stoken 会话，ck（cookie_token）取不到 authkey；
-		// 文案直接引导重新扫码，避免用户以为只是 cookie 过期反复 #刷新ck
-		const tip = /登录状态失效|登录失效|stoken/i.test(msg)
-			? "未取到有效 stoken，请重新【#扫码绑定】后再试"
-			: msg
+		// genAuthKey 只认 stoken 会话，ck（cookie_token）取不到 authkey。
+		// 区分「本地根本没有 stoken」和「stoken 过期」，文案才不会误导用户反复 #刷新ck
+		const localSk = user.getStoken(e.user_id) || {}
+		const noSk = !localSk?.stoken
+		const tip = noSk
+			? "本地没有这个 uid 的 stoken（ck 换不到抽卡 authkey），请重新【#扫码绑定】"
+			: /登录状态失效|登录失效|stoken/i.test(msg)
+				? "stoken 已失效，请重新【#扫码绑定】后再试"
+				: msg
+		Bot.logger.warn(`[authKey] uid:${e.uid} retcode:${authkeyrow?.retcode} msg:${msg} 本地stoken:${noSk ? "无" : "有"}`)
 		e.reply(`uid:${e.uid},authkey获取失败：${tip}`)
 		return false;
 	}
@@ -258,6 +263,9 @@ export async function bindStoken(e, uid = '') {
 	let msg = e.msg;
 	let user = new User(e);
 	await user.cookie(e)
+	// 扫码流程的 ck 是刚 exchange 出来的，优先级高于 data.db 里的旧 ck；
+	// 不还原的话旧 ck 已过期会让角色查询固定返回 -100
+	if (e.ck) e.cookie = e.ck
 	e.uid = uid || e.uid
 	e.region = getServer(e.uid)
 	e.cks = msg.replace(/;/g, '&').replace(/stuid/, "uid")

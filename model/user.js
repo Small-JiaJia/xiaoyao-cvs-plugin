@@ -861,11 +861,15 @@ export default class user {
                 if (!ltVal) {
                     Bot.logger.warn(`[stoken绑定] 未取到 ltoken，ck 中该项留空 qq:${this.e.user_id}`)
                 }
-                // 只有拿到 cookie_token 时才用本流程的 ck 覆盖，
-                // 否则保留上游（扫码流程）已经设置好的完整 cookie
-                if (dstToken) {
+                // 只有同时拿到 cookie_token 和 ltoken 时才用本流程的 ck 覆盖，
+                // 否则保留上游（扫码流程）已经设置好的完整 cookie。
+                // ltoken 为空是最致命的：userGameInfo 会固定返回 -100「登录状态失效」
+                if (dstToken && ltVal) {
                     this.e.cookie =
-                        `ltoken=${ltVal || ''};ltuid=${stuidVal};cookie_token=${dstToken}; account_id=${stuidVal};`
+                        `ltoken=${ltVal};ltuid=${stuidVal};cookie_token=${dstToken}; account_id=${stuidVal};`
+                } else if (!this.e.cookie && stuidVal && ltVal) {
+                    // 上游没给 cookie（老的手动 stoken 绑定路径），自己拼一个
+                    this.e.cookie = `ltoken=${ltVal};ltuid=${stuidVal};account_id=${stuidVal};`
                 }
                 // if(this.e.sk?.get('mid')){
                 // 	this.e.cookie =
@@ -882,28 +886,54 @@ export default class user {
             if (!this.cookie && this.e.cookie) {
                 this.cookie = this.e.cookie
             }
-            let list = []
+            // 排查用：区分「没 cookie」「cookie 里 ltoken 是空的」这两种 -100，
+            // 只看 ck:有/无 无法判断，容易误判成账号被封
+            const ckDesc = async () => {
+                const map = await utils.getCookieMap(this.e.cookie || "")
+                const lt = map.get("ltoken") || ""
+                const tk = map.get("stoken") || ""
+                return `ck:${this.e.cookie ? "有" : "无"} ltoken:${lt ? "有(" + lt.length + ")" : "空"} stoken:${tk ? "有(" + tk.length + ")" : "空"} ltuid:${map.get("ltuid") || "-"}`
+            }
             // 遍历 BIND_GAMES 中配置的游戏，逐个查询该账号下的角色
-            for (let item of BIND_GAMES) {
-                // 必须传 mys.boards 里的项（含 biz），ForumData 只有 id/forumId/name/url，
-                // 传给 getBody 会匹配失败导致 game_biz=undefined、接口返回空
-                const board = await this.getBoard(item)
-                if (!board) {
-                    Bot.logger.error(`[stoken绑定] 未找到 ${item} 的板块配置`)
-                    continue
+            const queryRoles = async () => {
+                let arr = []
+                for (let item of BIND_GAMES) {
+                    // 必须传 mys.boards 里的项（含 biz），ForumData 只有 id/forumId/name/url，
+                    // 传给 getBody 会匹配失败导致 game_biz=undefined、接口返回空
+                    const board = await this.getBoard(item)
+                    if (!board) {
+                        Bot.logger.error(`[stoken绑定] 未找到 ${item} 的板块配置`)
+                        continue
+                    }
+                    let result = await this.getData("userGameInfo", board, false)
+                    if (result?.retcode != 0) {
+                        Bot.logger.error(`[stoken绑定] 查询${item}角色失败 retcode:${result?.retcode}(${result?.message || ""}) biz:${board?.biz} ${await ckDesc()}`)
+                        continue;
+                    }
+                    arr.push(...(result?.data?.list || []))
                 }
-                let result = await this.getData("userGameInfo", board, false)
-                if (result?.retcode != 0) {
-                    Bot.logger.error(`[stoken绑定] 查询${item}角色失败 retcode:${result?.retcode}(${result?.message || ""}) biz:${board?.biz} ck:${this.cookie ? "有" : "无"}`)
-                    continue;
+                return arr
+            }
+            // 刚 exchange 完立刻查角色，米游社侧偶发返回 -100（登录状态失效），
+            // 同一个 ck 隔几秒再查就正常，所以失败后延迟重试，不要直接判死
+            let list = []
+            for (const [i, wait] of [ 0, 2000, 4000 ].entries()) {
+                if (wait) {
+                    Bot.logger.warn(`[stoken绑定] 第${i}次查询角色为空，${wait / 1000}s 后重试`)
+                    await utils.sleepAsync(wait)
                 }
-                list.push(...(result?.data?.list || []))
+                list = await queryRoles()
+                if (list.length) break
             }
             if (list.length == 0) {
-                Bot.logger.error(`[stoken绑定] 未获取到任何游戏角色，绑定中止。请检查 Cookie 是否有效`)
-                this.e.reply("未查询到游戏角色，绑定失败。请确认账号下已有角色后重新扫码~")
+                Bot.logger.error(`[stoken绑定] 未获取到任何游戏角色，绑定中止 ${await ckDesc()}`)
+                // 扫码流程由 bindSkCK 统一给结果提示（它还会用数据库兜底再写一次 sk），
+                // 这里静默返回，避免出现「提示绑定失败、实际已写入」的自相矛盾
+                if (!this.e.quietBind) this.e.reply("未查询到游戏角色，绑定失败。请确认账号下已有角色后重新扫码~")
                 return false;
             }
+            // 标记本次绑定已经成功写入，供 bindSkCK 判断是否还要提示失败
+            this.e.bindDone = true
             let uids = []
             let allData = {}
             for (let s of list) {
