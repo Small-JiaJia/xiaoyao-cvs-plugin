@@ -312,8 +312,38 @@ export async function cloudToken(e) {
 export async function delSign(e) {
 	let user = new User(e);
 	e.msg = e.msg.replace(/#|删除|我的/g, "");
-	let url = /sk|stoken/.test(e.msg) ? `${YamlDataUrl}` : `${yunpath}`;
+	let isSk = /sk|stoken/.test(e.msg);
+	let url = isSk ? `${YamlDataUrl}` : `${yunpath}`;
+	// 1. 先读出要删的 ltuid，yaml 删掉后就没法溯源了
+	let ltuids = []
+	if (isSk) {
+		try {
+			const file = `${url}/${e.user_id}.yaml`;
+			if (fs.existsSync(file)) {
+				const ck = YAML.parse(fs.readFileSync(file, "utf8")) || {}
+				for (const item of Object.values(ck)) {
+					if (item?.stuid) ltuids.push(String(item.stuid))
+				}
+			}
+		} catch (err) {
+			Bot.logger.error(`[删除stoken] 读取 yaml 失败：${err.message}`)
+		}
+	}
+	// 2. 删 yaml
 	await user.delSytk(url, e)
+	// 3. 同步清理 genshin 数据库里的 CK，否则 #签到 等仍能用旧凭据，出现“删了还能用”
+	if (isSk && ltuids.length) {
+		try {
+			const NoteUser = (await import(`file://${_path}/plugins/genshin/model/mys/NoteUser.js`)).default
+			const noteUser = await NoteUser.create(e)
+			for (const ltuid of [...new Set(ltuids)]) {
+				await noteUser.delMysUser(ltuid)
+				Bot.logger.mark(`[删除stoken] 已清理数据库凭据 [ltuid:${ltuid}] qq:${e.user_id}`)
+			}
+		} catch (err) {
+			Bot.logger.error(`[删除stoken] 清理数据库凭据失败：${err.message}`)
+		}
+	}
 	return true;
 }
 export async function updCookie(e) {
@@ -340,13 +370,10 @@ export async function updCookie(e) {
 			Bot.logger.mark(`[刷新ck][stoken读取]qq:${e?.user_id}；uid:${e?.uid}`)
 			continue; //奇怪的东西
 		}
-		let cookies = `uid=${stoken[item].stuid}&stoken=${stoken[item].stoken}`
-		if (stoken[item]?.mid) cookies += `&mid=${stoken[item]?.mid}`
-		let data = { cookies: cookies }
-		if (e?.uid[0] > 5) data.method = 'post'
-		let res = await user.getData("exchange", { token: stoken[item].stoken , mid: stoken[item]?.mid }, false)
+		let res = await user.getData("exchange", { token: stoken[item].stoken, mid: stoken[item]?.mid }, false)
 		if (!res?.data) {
-			e.reply(`uid:${stoken[item].uid},请求异常：${res.message}`)
+			// res 在请求异常时为 false，直接取 .message 会抛 TypeError
+			e.reply(`uid:${stoken[item].uid},请求异常：${res?.message || "接口无响应"}`)
 			continue;
 		}
 		let ck = res?.data?.token?.token

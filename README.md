@@ -24,19 +24,6 @@ yunzai-bot 扩展插件，提供米游社签到、米游币、体力查询等功
 | 换 ltoken | `getLTokenBySToken` | 同上，另有成对方法 `getLTokenBySTokenV1` 可佐证 v1/v2 分离 |
 | ltoken 取值 | `ltoken=${token}` 直接把 stoken 当 ltoken | v1 时代碰巧可用，v2 下彻底不可用 |
 
-### 扩展：米哈游出新游戏怎么适配
-
-扫码登录本身**不需要任何改动**——`createQRLogin` / `queryQRLoginStatus` / `exchange` 拿的都是
-米游社通行证**账号级**凭据（aid / mid / stoken），与具体游戏无关。
-
-需要改的只有「查角色列表」这一步，因为它要传每个游戏各自的 `game_biz`：
-
-| 游戏 | biz |
-| --- | --- |
-| 原神 | `hk4e_cn`（国际服 `hk4e_global`） |
-| 崩坏星穹铁道 | `hkrpg_cn`（国际服 `hkrpg_global`） |
-| 绝区零 | `nap_cn`（国际服 `nap_global`） |
-
 ## 功能特性
 
 - stoken 相关功能支持
