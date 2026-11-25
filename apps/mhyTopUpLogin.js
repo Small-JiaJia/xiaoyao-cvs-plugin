@@ -15,12 +15,10 @@ export const rule = {
     describe: "扫码登录"
   },
   UserPassMsg: {
+    // 密码登录已整体移除（依赖第三方极验破解、成功率低且要用户交明文密码），
+    // 只保留带 # 的指令给个提示，避免老用户以为机器人挂了；无 # 的裸格式不再拦截
     reg: "^#(账号|密码)(密码)?(登录|绑定|登陆)$",
-    describe: "账号密码登录"
-  },
-  UserPassLogin: {
-    reg: "^账号(.*)密码(.*)$",
-    describe: "账号密码登录"
+    describe: "密码登录已移除"
   }
 }
 
@@ -34,13 +32,25 @@ export async function qrCodeLogin(e, { render }) {
   let res = await Mys.qrCodeLogin()
   if (!res?.data) return false
 
-  const image = await Common.render("qrCode/index", {
-    url: res.data.url,
-    Qrsvg: [ xiaoyaoQr(res.data.url) ]
-  }, { e, render, retType: "base64", scale: 1.2 })
+  // 先上锁再渲染：Common.render 是串行的，实测慢的时候要 40~50s，
+  // 这段时间里重复点击会通过 Mys.qrCodeLogin 的缓存检查，再排一次队渲染。
+  // 把锁提前到这里，重复触发会被直接拦下。
+  await utils.redisSet(e.user_id, "GetQrCode", { GetQrCode: 1 }, 60 * 5)
 
-  // 设置5分钟缓存避免重复触发
-  await utils.redisSet(e.user_id, "GetQrCode", { GetQrCode: 1, image }, 60 * 5)
+  let image
+  try {
+    image = await Common.render("qrCode/index", {
+      url: res.data.url,
+      Qrsvg: [ xiaoyaoQr(res.data.url) ]
+    }, { e, render, retType: "base64", scale: 1.2 })
+  } catch (err) {
+    // 渲染失败要解锁，否则用户会被缓存挡 5 分钟
+    await utils.redisDel(e.user_id, "GetQrCode")
+    Bot.logger.error(`[扫码登录] 二维码渲染失败：${err.message}`)
+    await e.reply("二维码生成失败，请稍后重试~", true)
+    return true
+  }
+
   await e.reply([ "请扫码以完成绑定\n", image ], false, { at: true, recallMsg: 60 })
 
   res = await Mys.GetQrCode(res.data.ticket)
@@ -50,18 +60,10 @@ export async function qrCodeLogin(e, { render }) {
 }
 
 export async function UserPassMsg(e) {
+  // 密码登录已移除，只给引导；群里不回复，避免刷屏
   if (!e.isPrivate) return false
-  let Mys = new mys(e)
-  await Mys.UserPassMsg()
+  await e.reply("密码登录功能已移除，请改用【#扫码绑定】~")
   return true
-}
-
-export async function UserPassLogin(e) {
-  if (!e.isPrivate) return false
-  let Mys = new mys(e)
-  let res = await Mys.UserPassLogin()
-  if (res) await bindSkCK(e, res)
-  return res
 }
 
 export async function bindSkCK(e, res) {
@@ -86,17 +88,27 @@ export async function bindSkCK(e, res) {
   // 角色查询失败的提示延迟到 saveSkYaml 之后统一给，避免「提示绑定失败、其实已写入」
   e.quietBind = true
   e.bindDone = false
-  await bindStoken(e, "1")
-  e.ck = res?.cookie
-  e.cookie = res?.cookie
-  e.msg = res.cookie
-  e.raw_message = res.cookie
-  if (isV3) {
-    let userck = (await import(`file://${_path}/plugins/genshin/model/user.js`)).default
-    await (new userck(e)).bing()
-  } else {
-    let { bingCookie } = await import(`file://${_path}/lib/app/dailyNote.js`)
-    await bingCookie(e)
+  try {
+    await bindStoken(e, "1")
+  } catch (err) {
+    // 绑定流程异常不能让后续写 yaml 一起中断，否则「绑定成功但 #体力 不可用」会重现
+    Bot.logger.error(`[扫码登录] stoken 绑定异常：${err.message}`)
+  } finally {
+    e.ck = res?.cookie
+    e.cookie = res?.cookie
+    e.msg = res.cookie
+    e.raw_message = res.cookie
+  }
+  try {
+    if (isV3) {
+      let userck = (await import(`file://${_path}/plugins/genshin/model/user.js`)).default
+      await (new userck(e)).bing()
+    } else {
+      let { bingCookie } = await import(`file://${_path}/lib/app/dailyNote.js`)
+      await bingCookie(e)
+    }
+  } catch (err) {
+    Bot.logger.error(`[扫码登录] 写入 genshin Cookie 失败：${err.message}`)
   }
   // #体力 等 ji-plugin 功能直接读 data/yaml/{qq}.yaml 里的 sk，不读数据库。
   // 放在 bing 之后：此时数据库里已有角色 uid，接口查询失败时可以兜底，
@@ -111,6 +123,11 @@ export async function bindSkCK(e, res) {
     } else {
       await e.reply("未查询到游戏角色，绑定失败。请确认账号下已有角色后重新扫码~")
     }
+  }
+  // ltoken 缺失时 sk 能写进去，但 #体力/#签到 会以 -100 失败，
+  // 提前告知比让用户自己排查更好；exchange 是一次性的，只能重扫
+  if (!ltoken && (e.bindDone || saved > 0)) {
+    await e.reply("提示：本次未换到 ltoken，#体力/#签到 可能不可用，建议重新【#扫码绑定】")
   }
 }
 

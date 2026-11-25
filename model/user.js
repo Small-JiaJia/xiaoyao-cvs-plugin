@@ -255,9 +255,17 @@ export default class user {
             name: "原神"
         })
         if (!res?.data) {
-            res.message = `登录Stoken失效请重新获取cookies或stoken保存~`;
+            let retcode = res?.retcode
+            res = res || {}
+            if (retcode === -100) {
+                // 明确「登录失效」才清理本地 sk；网络超时等异常（res 为 false）不能删，
+                // 否则一次抖动就会把用户已绑定的 stoken 清掉
+                res.message = `登录Stoken失效请重新获取cookies或stoken保存~`;
+                await this.delSytk(yamlDataUrl, this.e, "stoken", true)
+            } else {
+                res.message = `米游社接口异常（retcode:${retcode ?? "-"}），请稍后重试~`
+            }
             res.isOk = false;
-            this.delSytk(yamlDataUrl, this.e)
         } else {
             res.message = `当前米游币数量为：${res.data.total_points},今日剩余可获取：${res.data.can_get_points}`
             res.isOk = true;
@@ -933,7 +941,6 @@ export default class user {
                 return false;
             }
             // 标记本次绑定已经成功写入，供 bindSkCK 判断是否还要提示失败
-            this.e.bindDone = true
             let uids = []
             let allData = {}
             for (let s of list) {
@@ -957,9 +964,16 @@ export default class user {
                     region: s.region
                 }
             }
+            // 全部 uid 都不合法时等同于没查到角色，不能继续报「绑定成功 角色数:0」
+            if (!Object.keys(allData).length) {
+                Bot.logger.error(`[stoken绑定] 角色列表存在但 uid 均不合法，绑定中止 ${await ckDesc()}`)
+                if (!this.e.quietBind) this.e.reply("未查询到有效的游戏角色，绑定失败。请确认账号下已有角色后重新扫码~")
+                return false
+            }
+            this.e.bindDone = true
             // 一次性保存，避免循环内反复读写同一个 yaml 文件
             await gsCfg.saveBingStoken(this.e.user_id, allData)
-            Bot.logger.mark(`[stoken绑定] 保存成功 qq:${this.e.user_id} 角色数:${uids.length}`)
+            Bot.logger.mark(`[stoken绑定] 保存成功 qq:${this.e.user_id} 角色数:${Object.keys(allData).length}`)
             let msg = `${uids.join('\n')}\nstoken绑定成功您可通过下列指令进行操作:`;
             msg += '\n【#米币查询】查询米游币余额'
             msg += '\n【#mys原神签到】获取米游币'
@@ -971,47 +985,55 @@ export default class user {
         }
     }
 
-    async delSytk(path = yamlDataUrl, e, type = "stoken") {
-        await this.getCookie(e);
+    /**
+     * 删除 sk / 云原神 token 文件
+     * @param {boolean} delAll 是否整份删除。删除命令没有 uid 参数，语义就是「删我的全部」，
+     *   必须整份删，否则会和 delSign 的数据库清理（按文件中全部 ltuid 删除）不一致。
+     *   注意：不能在这里调 getCookie()，它会把 e.uid 填成 ltuid 或默认游戏 uid，
+     *   导致 ck[e.uid] 命中不了 yaml 的游戏 uid key，出现「提示成功但没删」或只删一部分。
+     */
+    async delSytk(path = yamlDataUrl, e, type = "stoken", delAll = false) {
         if (type != "stoken") {
             path = cloudDataUrl
         }
         let file = `${path}/${e.user_id}.yaml`
-        fs.exists(file, (exists) => {
-            if (!exists) {
-                return true;
-            }
-            let ck = fs.readFileSync(file, 'utf-8')
-            ck = YAML.parse(ck)
-            const done = () => e.reply(`已删除${/米游社|mys|米币|米游币|sk|stoken/.test(e.msg) ? 'stoken' : '云原神token'}`)
-            if (ck?.yuntoken) {
-                fs.unlinkSync(file);
-            } else if (ck) {
-                // 未指定 uid 时直接清空整个文件的绑定，避免必须带 uid 才能删除
-                if (!e.uid) {
-                    fs.unlinkSync(file);
-                    done()
-                    return true;
-                }
-                if (!ck[e.uid]) {
-                    return true;
-                }
-                let sk = ck[e.uid]
-                // 同一通行证（stoken 相同）下的多个角色一起删
-                lodash.forEach(ck, (v, i) => {
-                    if (sk?.stoken === v?.stoken) {
-                        delete ck[i];
-                    }
-                })
-                if (Object.keys(ck).length === 0) {
-                    fs.unlinkSync(file);
-                } else {
-                    fs.writeFileSync(file, YAML.stringify(ck), 'utf8')
-                }
-            }
+        if (!fs.existsSync(file)) {
+            e.reply?.(`未找到绑定记录，无需删除`)
+            return false
+        }
+        let ck = {}
+        try {
+            ck = YAML.parse(fs.readFileSync(file, 'utf-8')) || {}
+        } catch (error) {
+            Bot.logger.error(`[删除token] 解析 ${file} 失败：${error.message}`)
+            return false
+        }
+        const done = () => e.reply?.(`已删除${/米游社|mys|米币|米游币|sk|stoken/.test(e.msg) ? 'stoken' : '云原神token'}`)
+        // 云原神 token 文件、旧版单 uid 平铺格式、未指定 uid、显式要求整份删除
+        if (ck?.yuntoken || ck?.uid || delAll || !e.uid) {
+            fs.unlinkSync(file)
             done()
-            return true;
+            return true
+        }
+        let sk = ck[e.uid]
+        if (!sk) {
+            // 指定的 uid 不在文件里，仍然给个回执，避免用户以为没反应
+            e.reply?.(`未找到 uid:${e.uid} 的绑定记录`)
+            return false
+        }
+        // 同一通行证（stoken 相同）下的多个角色一起删
+        lodash.forEach(ck, (v, i) => {
+            if (sk?.stoken === v?.stoken) {
+                delete ck[i];
+            }
         })
+        if (Object.keys(ck).length === 0) {
+            fs.unlinkSync(file)
+        } else {
+            fs.writeFileSync(file, YAML.stringify(ck), 'utf8')
+        }
+        done()
+        return true
     }
 
     getDataList(name) {

@@ -7,7 +7,6 @@ export default class mysTopLogin {
         this.init();
         //消息提示以及风险警告
         this.sendMsgUser = `免责声明:您将通过扫码完成获取米游社sk以及ck。\n本Bot将不会保存您的登录状态。\n我方仅提供米游社查询及相关游戏内容服务,若您的账号封禁、被盗等处罚与我方无关。\n害怕风险请勿扫码~`
-        this.sendMsgUserPassLogin = `免责声明:您将通过密码完成获取米游社sk以及ck。\n本Bot将不会保存您的账号和密码。\n我方仅提供米游社查询及相关游戏内容服务,若您的账号封禁、被盗等处罚与我方无关。\n害怕风险请勿发送账号密码~`
         this.sendMsgPay = `格式参考：#原神充值 6(商品ID)\n可通过【#商品列表】获取可操作商品`
         this.sendMsgOrderReg = `消息格式无法识别，格式参考：#订单查询16347*****(订单号),100000000(uid)`
         this.keys = `xiaoyao:payOrder`
@@ -19,7 +18,7 @@ export default class mysTopLogin {
     async qrCodeLogin() {
         let RedisData = await utils.redisGet(this.e.user_id, "GetQrCode")
         if (RedisData) {
-            this.e.reply([segment.at(this.e.user_id), `前置二维码未扫描，请勿重复触发指令`])
+            this.e.reply([segment.at(this.e.user_id), `上一条二维码还在等待扫码，请先完成，或等待 5 分钟后再试`])
             return false;
         }
         this.device = await utils.randomString(16)
@@ -27,10 +26,19 @@ export default class mysTopLogin {
         let res = await this.user.getData("qrCodeLogin", {
             device: this.device
         },false)
-        if (!res.data) {
+        // getData 在网络异常时返回 false，直接取 res.data 会抛 TypeError，
+        // 用户那边表现成「发了指令毫无反应」，这里必须先判空
+        if (!res?.data) {
+            Bot.logger.error(`[扫码登录] 获取二维码失败 retcode:${res?.retcode ?? "-"}(${res?.message || "接口无响应"})`)
+            await this.e.reply("获取二维码失败，请稍后重试~", true)
             return false;
         }
-        res.data["ticket"] = res.data["ticket"] || res?.data?.url.split("ticket=")[1]
+        res.data["ticket"] = res.data["ticket"] || res.data?.url?.split("ticket=")[1]
+        if (!res.data["ticket"]) {
+            Bot.logger.error("[扫码登录] 二维码返回中没有 ticket，无法轮询扫码状态")
+            await this.e.reply("获取二维码失败，请稍后重试~", true)
+            return false;
+        }
         return res
     }
     async GetQrCode(ticket) {
@@ -53,20 +61,27 @@ export default class mysTopLogin {
             }
         }
         await utils.redisDel(this.e.user_id, 'GetQrCode')
-        if (!res?.data?.tokens&&!res?.data?.user_info) {
+        // tokens 为空数组时是真值，原来的 `!res.data.tokens && !user_info` 拦不住，
+        // 会在下面取 user_info.aid 时抛 TypeError，这里改成判长度
+        if (!res?.data?.tokens?.length || !res?.data?.user_info) {
             await this.e.reply("验证超时", true)
             return false
         }
         const uid = res.data.user_info.aid || res.data.user_info.uid || res.data.user_info.account_id
         const mid = res.data.user_info.mid
-        const stokenItem = res.data.tokens.find(i => i.name === "stoken" || i.name === "stoken_v2") || res.data.tokens[0]
+        // 接口返回的 tokens 里没有 name 字段（实测只有 token/token_type），
+        // 优先按 token_type=1(stoken) 取，取不到再退回第一个
+        const tokens = res.data.tokens || []
+        const stokenItem = tokens.find(i => i?.name === "stoken" || i?.name === "stoken_v2") ||
+            tokens.find(i => Number(i?.token_type) === 1) || tokens[0]
         let token = stokenItem?.token
          if (!(uid && token && mid)) {
             await this.e.reply("stoken获取不完整请重新扫码", true);
             return false
         }
-        // 扫码拿到的 token 是 v2 格式（v2_ 前缀），exchange 的 token_type 需按 2 传，否则返回 -3001
-        const tokenType = Number(stokenItem?.token_type) || (String(token).startsWith("v2_") ? 2 : 1)
+        // src_token 始终按 stoken 传 1。接口虽然返回 {token_type:1}，但不要拿它当参数用——
+        // 一旦某天返回 2，exchange 会把它当 ltoken 直接 -3001，扫码绑定就整条挂掉
+        const tokenType = 1
 
         // 主接口：exchange（dst_token_type=4 换 cookie_token）
         let UserData = await this.user.getData("exchange", { token, mid, tokenType, dstTokenType: 4 }, false)
@@ -94,94 +109,6 @@ export default class mysTopLogin {
             // 把首次结果带出去给 bindStoken 复用
             exchange: UserData
         }
-    }
-
-    async UserPassMsg() {
-        this.e.reply(this.sendMsgUserPassLogin)
-        this.e.reply(`请将账号密码用逗号隔开私聊发送以完成绑定\n例：账号xxx@qq.com,密码xxxxx`)
-    }
-    async UserPassLogin() {
-        let msg = this.e.msg.replace(/账号|密码|：|:/g, '').replace(/,|，/, ',').split(',');
-        if (msg.length != 2) {
-            return false;
-        }
-        let body = {
-            account: msg[0], password: msg[1],
-        }
-        let res = await this.user.getData("loginByPassword", body, "")
-        Bot.logger.mark(`[米哈游登录] ${Bot.logger.mark(JSON.stringify(res))}`)
-        if (res.retcode == -3101) {
-            Bot.logger.mark("[米哈游登录] 正在验证")
-            this.aigis_captcha_data = JSON.parse(res.aigis_data.data)
-            let vlData = await this.crack_geetest()
-            // let validate = await this.user.getData("validate", this.aigis_captcha_data, false)
-            if (vlData?.data?.geetest_seccode) {
-                Bot.logger.mark("[米哈游登录] 验证成功")
-            } else {
-                Bot.logger.error("[米哈游登录] 验证失败")
-                this.e.reply('接口效验失败，请重新尝试~')
-                return false
-            }
-            let validate = vlData?.data?.geetest_seccode.replace("|jordan", '')
-            let aigis = res.aigis_data.session_id + ";" + Buffer.from(JSON.stringify({
-                geetest_challenge: vlData?.data?.geetest_challenge,
-                geetest_seccode: validate + "|jordan",
-                geetest_validate: validate
-            })).toString("base64")
-            body.headers = {
-                'x-rpc-aigis': aigis,
-            }
-            res = await this.user.getData("loginByPassword", body, false)
-            Bot.logger.mark(`[米哈游登录] ${Bot.logger.mark(JSON.stringify(res))}`)
-        }
-        if (res.retcode == 0) {
-            const token = res.data.token.token
-            const mid = res.data.user_info.mid
-            const aid = res.data.user_info.aid
-            const cookies = `stoken=${token}&mid=${mid}`
-            // 与扫码登录一致：loginByPassword 返回的同样是 v2 token，
-            // bbsGetCookie / getLTokenBySToken 只认 v1，必须改走 exchange
-            const tokenType = String(token || "").startsWith("v2_") ? 2 : 1
-            const ckRes = await this.user.getData("exchange", { token, mid, tokenType, dstTokenType: 4 }, false)
-            const cookieToken = ckRes?.data?.token?.token || ckRes?.data?.cookie_token
-            if (!cookieToken) {
-                await this.e.reply(`密码登录换取cookie_token失败：${ckRes?.message || "接口返回为空"}`, true)
-                return false
-            }
-            const ltRes = await this.user.getData("exchange", { token, mid, tokenType, dstTokenType: 2 }, false)
-            const ltoken = ltRes?.data?.token?.token || ltRes?.data?.ltoken
-            if (!ltoken) {
-                Bot.logger.warn(`[米哈游登录] exchange 换取 ltoken 失败 retcode:${ltRes?.retcode}(${ltRes?.message || ""})，ltoken 将留空`)
-            }
-            Bot.logger.mark(`[米哈游登录] ck 换取完成 aid:${aid} tokenType:${tokenType}`)
-            return {
-                cookie: `ltoken=${ltoken || ''};ltuid=${aid};cookie_token=${cookieToken};account_id=${aid};`,
-                stoken: `${cookies.replace('&', ';')};stuid=${aid};`,
-                // 同扫码流程：stoken 只能 exchange 一次，把结果带出去复用
-                exchange: ckRes
-            }
-        } else {
-            await this.e.reply(`错误：${JSON.stringify(res)}`, true)
-            return false
-        }
-    }
-    async crack_geetest() {
-        let res = ""; //await this.user.getData("microgg", this.aigis_captcha_data, false)
-        // Bot.logger.mark(`[米哈游登录] ${Bot.logger.mark(JSON.stringify(res))}`)
-        await this.e.reply(`请完成验证：https://challenge.minigg.cn/manual/index.html?gt=${this.aigis_captcha_data.gt}&challenge=${this.aigis_captcha_data.challenge}`, true)
-        for (let n = 1; n < 60; n++) {
-            await utils.sleepAsync(5000)
-            try {
-                res = await this.user.getData("microggVl", this.aigis_captcha_data, false)
-                if (res?.data?.geetest_seccode) {
-                    return res
-                }
-            } catch (err) {
-                Bot.logger.error(`[米哈游登录] 错误：${Bot.logger.red(err)}`)
-            }
-        }
-        await this.e.reply("验证超时", true)
-        return false;
     }
 
     async showgoods({ render }) {

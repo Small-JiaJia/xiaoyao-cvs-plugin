@@ -273,6 +273,27 @@ export async function bindStoken(e, uid = '') {
 	// 扫码流程在 GetQrCode 里已经 exchange 过，同一个 stoken 再换一次会返回 -3001（token 已消费），
 	// 有缓存就复用；手动发送 stoken 绑定时 e.exData 为空，照常请求
 	let res = e.exData || await user.getData("exchange", { token: e.sk?.get('stoken'), mid: e.sk?.get('mid') }, false)
+	// 手动绑定只会换到 cookie_token(dst=4)，v2 stoken 又不能用 getLTokenBySToken 补，
+	// 这里再用 dst=2 换一次 ltoken；不补的话 #体力/#签到 会固定 -100
+	if (res?.data && !e.sk?.get('ltoken')) {
+		try {
+			const ltRes = await user.getData("exchange", {
+				token: e.sk?.get('stoken'),
+				mid: e.sk?.get('mid'),
+				dstTokenType: 2
+			}, false)
+			const lt = ltRes?.data?.token?.token
+			if (lt) {
+				e.sk.set('ltoken', lt)
+				e.msg = `${e.msg};ltoken=${lt}`
+				e.raw_message = e.msg
+			} else {
+				Bot.logger.warn(`[stoken绑定] 手动绑定时换取 ltoken 失败 retcode:${ltRes?.retcode ?? "-"}(${ltRes?.message || "接口无响应"})`)
+			}
+		} catch (err) {
+			Bot.logger.warn(`[stoken绑定] 换取 ltoken 异常：${err.message}`)
+		}
+	}
 	/* if (!res?.data) {
 		e.uid = "64"
 		e.region = getServer(e.uid)
@@ -345,8 +366,9 @@ export async function delSign(e) {
 			Bot.logger.error(`[删除stoken] 读取 yaml 失败：${err.message}`)
 		}
 	}
-	// 2. 删 yaml
-	await user.delSytk(url, e)
+	// 2. 删 yaml：命令本身没有 uid 参数，直接整份删除，
+	//    与下面「按文件中全部 ltuid 清数据库」保持一致
+	await user.delSytk(url, e, "stoken", isSk)
 	// 3. 同步清理 genshin 数据库里的 CK，否则 #签到 等仍能用旧凭据，出现“删了还能用”
 	if (isSk && ltuids.length) {
 		try {
@@ -385,6 +407,11 @@ export async function updCookie(e) {
 		if (!e?.uid) {
 			Bot.logger.mark(`[刷新ck][stoken读取]qq:${e?.user_id}；uid:${e?.uid}`)
 			continue; //奇怪的东西
+		}
+		// ltoken 为空时拼出来的 ck 会固定 -100，刷了也没用，先拦下来提示重扫
+		if (!stoken[item].ltoken) {
+			e.reply(`uid:${stoken[item].uid},本地记录缺少 ltoken，无法刷新，请重新【#扫码绑定】`)
+			continue;
 		}
 		let res = await user.getData("exchange", { token: stoken[item].stoken, mid: stoken[item]?.mid }, false)
 		if (!res?.data) {

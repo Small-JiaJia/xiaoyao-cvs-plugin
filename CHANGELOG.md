@@ -1,50 +1,40 @@
+# 1.3.5
+* 移除账号密码登录
+    * 依赖第三方极验破解，成功率低且要交明文密码；已绑定的账号不受影响
+* 修复 `#刷新ck`、手动 stoken 绑定全部 `-3001`
+    * `exchange` 的 `token_type` 传成了 2，实际必须传 1
+* 修复手动 stoken 绑定拿不到 ltoken，`#体力`/`#签到` 固定 `-100`
+* 修复 `#删除stoken` 提示成功但文件还在
+* 修复一次网络抖动就删掉本地 stoken
+    * 现在只认 `-100`，超时不再误删
+* 修复扫码二维码重复点击会排队渲染 40~50 秒
+* 扫码绑定健壮性
+    * 绑定异常时仍写入 sk，不再出现「提示成功但 `#体力` 不可用」
+    * 缺 ltoken 时提示重扫；接口无响应时给提示而非静默失败
+
 # 1.3.4
 * 修复老用户重新扫码时「提示绑定失败，实际已写入」的矛盾
-    * 现象：`[stoken绑定] 查询原神角色失败 retcode:-100 ck:有` → 回复「未查询到游戏角色，绑定失败」，
-      随后又输出「绑定Cookie成功」，`data/yaml` 里也确实写进了 3 个角色
-    * 根因：该 QQ 之前绑过同一账号，`data.db` 里留着旧 ck；`bindStoken` 里的 `user.cookie(e)`
-      把刚扫码换出来的新 ck 覆盖成了已过期的旧 ck，三个游戏的 `userGameInfo` 全部 `-100`
-    * 修复：`bindStoken` 在 `user.cookie(e)` 之后用扫码得到的 `e.ck` 还原，新 ck 优先级高于数据库旧 ck
-    * `seachUid` 角色查询失败后延迟重试（0s / 2s / 4s），不再一次 `-100` 就判定失败
-    * 失败提示改由 `bindSkCK` 统一给出：只要 `saveSkYaml` 成功落盘就回复已保存，
-      并说明「角色接口暂时无响应，已按已有角色记录写入」
-    * 角色查询失败日志补充 `ltoken 有/空、长度、ltuid`，便于区分「没 ck」「ltoken 为空」「账号无角色」
-* 修复 `miHoYoApi` 构造出 `stuid=undefined;stoken=undefined;ltoken=undefined` 的假 cookie
-    * `getStoken()` 找不到对应 uid 时返回 `{}`（真值），`if (data)` 判断失效，仍拼出假 cookie
-    * 影响 `authKey`（`Cookie: this.cookies || this.cookie`）：刚扫码、yaml 还没写入时，
-      `#更新抽卡记录` 固定报「未取到有效 stoken」
-    * 改为 `if (data?.stoken)`；`authKey` 仅在 `this.cookies` 含 `stoken` 时才用它，否则退回 ck
-    * `authKey` 失败文案区分「本地没有该 uid 的 stoken」与「stoken 已失效」，并记录 `retcode`
+    * 旧 ck 覆盖了新 ck，角色查询全部 `-100`，但 sk 其实已落盘
+    * 新 ck 优先级高于数据库旧 ck；查询失败后重试，成功落盘即视为绑定成功
+* 修复 `miHoYoApi` 拼出 `stoken=undefined` 的假 cookie，`#更新抽卡记录` 报「未取到有效 stoken」
+    * `authKey` 失败文案区分「本地没有 stoken」与「stoken 已失效」
+
 # 1.3.3
 * 修复 `#更新抽卡记录` 报「authkey获取失败：登录状态失效」
-    * 根因：`saveSkYaml` 里给 `user.cookie` 赋值对 `miHoYoApi` 无效（它读 `e.cookie`），
-      扫码绑定后 `data/yaml/{qq}.yaml` 实际没写入，`genAuthKey` 拿不到 stoken+mid，固定返回 `-100`
-    * `bindSkCK` 在 `bindStoken` 前后都显式设置 `e.cookie`，并把 cookie 里的 `ltoken` 合并进 sk 串
-    * `getCookie` 只在真的读到值时覆盖 `e.cookie`，不再用 `undefined` 冲掉刚拿到的 ck
-    * `saveSkYaml` 移到 `bing()` 之后执行；接口查不到角色时改用数据库已写入的角色 uid 兜底
-    * `seachUid` 在 `exchange` 偶发失败时仍用扫码得到的 stoken/stuid 继续，避免整段写入被跳过
-    * `authKey` 的 Cookie 头改为 `this.cookies || this.cookie`，不再发送 `undefined`
-    * `#更新抽卡记录` 失败提示改为引导重新 `#扫码绑定`，不再误导成「cookie 过期」
-    * `GetQrCode` / `UserPassLogin` 把首次 `exchange` 结果传给 `bindStoken` 复用
-      （同一个 stoken 二次 exchange 会返回 `-3001 参数不合法`，此前靠兜底才没中断绑定）
+    * `saveSkYaml` 赋值对 `miHoYoApi` 无效，扫码后 `data/yaml` 实际没写入
+    * `saveSkYaml` 移到 `bing()` 之后，接口查不到角色时用数据库 uid 兜底
+
 # 1.3.2
-* 修复 `#删除stoken` 只删 yaml、不删数据库的问题
-    * 现象：删除后提示成功，但 `#签到` 仍能用旧凭据，`#体力` 却提示未绑定
-    * 原因：`delSytk` 只操作 `data/yaml`，`data/db` 里 genshin 的 CK 未被清理
-    * 现在先读出 ltuid → 删 yaml → 调用 `NoteUser.delMysUser()` 同步清理数据库
-    * 修复 `delSytk` 中 `Object.keys(ck) == 0` 恒为 false，导致删空后残留空文件
-    * 修复未指定 uid 时无法删除（原先必须 `ck[e.uid]` 存在才会继续）
-* ltoken 严格取值，不再用 `cookie_token` 顶替
-    * `seachUid` 与 `GetQrCode` 中 `ltoken` 只取真实 ltoken 值
-    * 换取失败时留空并记录警告，避免语义混淆
-* `#刷新ck` 修复与清理
-    * 修复 `res` 为 `false` 时读 `res.message` 抛 `TypeError`
-    * 移除未被使用的 `cookies` / `data` 死代码
+* 修复 `#删除stoken` 只删 yaml、不删数据库
+    * 删除后 `#签到` 仍能用旧凭据，`#体力` 却提示未绑定
+    * 现在同步清理 genshin 数据库的 CK；顺带修复删空后残留空文件
+* ltoken 严格取真实值，不再用 `cookie_token` 顶替
+* `#刷新ck`：修复 `res` 为 `false` 时读 `res.message` 抛 `TypeError`
+
 # 1.3.1
-* 新增 `BIND_GAMES` 常量，统一管理扫码绑定时查询的游戏列表
-    * 修复 `#扫码登录` 漏查绝区零角色的问题
-    * `model/user.js` 与 `apps/mhyTopUpLogin.js` 共用同一份配置，新增游戏只改一处
-    * 游戏名在 `mys.boards` 中找不到时跳过并记录警告，不中断绑定
+* 新增 `BIND_GAMES`，统一管理扫码时查询的游戏列表
+    * 修复 `#扫码登录` 漏查绝区零角色
+
 # 1.3.0
 * 修复米游社 stoken 升级 v2 格式后 `#扫码登录` 失败（`retcode:1002`）
     * `exchange` 的 `src_token.token_type` 按 `v2_` 前缀自适应为 2

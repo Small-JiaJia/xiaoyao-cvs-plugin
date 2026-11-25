@@ -128,9 +128,6 @@ export default class miHoYoApi {
 			Bot.logger.debug(`[米游社接口][请求参数] ${url} ${JSON.stringify(param)}`)
 		}
 		res.api = type
-		if (type == "loginByPassword") {
-			res.aigis_data = JSON.parse(response.headers.get("x-rpc-aigis"))
-		}
 		return res
 	}
 	getUrl(type, board, data) {
@@ -212,8 +209,10 @@ export default class miHoYoApi {
 				body: {
 					"src_token": {
 						"token": data.token,
-						// 扫码拿到的 v2_ token 需要传 2，v1 stoken 传 1，否则返回 -3001 参数不合法
-						"token_type": data.tokenType || (String(data.token || "").startsWith("v2_") ? 2 : 1)
+						// src_token 永远是 stoken（token_type=1），v1/v2 只是字符串格式不同。
+						// 实测对 v2_ 开头的 token 传 2 会直接返回 -3001 参数不合法，
+						// 所以默认值必须是 1，不能按前缀推断成 2
+						"token_type": Number(data.tokenType) || 1
 					},
 					"mid": data.mid,
 					// 目标类型：1 stoken / 2 ltoken / 3 game_token / 4 cookie_token
@@ -271,23 +270,6 @@ export default class miHoYoApi {
 			getLtoken: {
 				// APK 中 getLTokenBySToken 为 GET 请求，凭据走 Cookie 头
 				url: `${mys.pass_api}/account/auth/api/getLTokenBySToken`,
-				types: 'pass'
-			},
-			//用于手动过验证码，账号密码登录需要
-			microgg: {
-				url: `https://challenge.minigg.cn/manual/index.html`,
-				query: `gt=${data.gt}&challenge=${data.challenge}`
-			},
-			microggVl: {
-				url: `https://challenge.minigg.cn/manual/`,
-				query: `callback=${data.challenge}`
-			},
-			loginByPassword: {
-				url: `${mys.pass_api}/account/ma-cn-passport/app/loginByPassword`,
-				body: {
-					account: this.encrypt_data(data.account),
-					password: this.encrypt_data(data.password)
-				},
 				types: 'pass'
 			},
 			qrCodeLogin: {
@@ -567,13 +549,6 @@ export default class miHoYoApi {
 		} catch (error) {
 			return {}
 		}
-	}
-	encrypt_data(data) {
-		if (!data) return '';
-		return crypto.publicEncrypt({
-			key: mys.publicKey,
-			padding: crypto.constants.RSA_PKCS1_PADDING
-		}, data).toString("base64")
 	}
 	//社区签到ds
 	getDs2(q = "", b, salt) {
